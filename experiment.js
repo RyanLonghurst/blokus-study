@@ -928,8 +928,20 @@ function wireInput() {
   window.addEventListener("pagehide", () => { tick(); save(); });
 }
 
+// No zooming on phones. Safari on iPhone ignores user-scalable=no in the viewport tag,
+// so pinch gestures and two-finger moves are cancelled here as well.
+function blockZoom() {
+  for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
+    document.addEventListener(type, e => e.preventDefault(), { passive: false });
+  }
+  document.addEventListener("touchmove", e => {
+    if (e.touches.length > 1 || (e.scale !== undefined && e.scale !== 1)) e.preventDefault();
+  }, { passive: false });
+}
+
 // ---------------------------------------------------------------- start
 function main() {
+  blockZoom();
   fillRules();
   wireInput();
   const saved = load();

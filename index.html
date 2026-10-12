@@ -22,6 +22,9 @@
   #play.me-0 { --me: var(--blue); --me-ghost: rgba(52, 110, 214, .67); --them: var(--yellow); }
   #play.me-1 { --me: var(--yellow); --me-ghost: rgba(232, 180, 20, .67); --them: var(--blue); }
   * { box-sizing: border-box; }
+  /* no pinch or double-tap zoom on phones (iPhones ignore user-scalable=no, so this and the
+     gesture blocking in experiment.js do the work); scrolling still works */
+  html, body { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
     font-family: "Segoe UI", Helvetica, Arial, sans-serif; font-size: 17px; line-height: 1.45;
