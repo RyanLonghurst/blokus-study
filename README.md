@@ -1,6 +1,6 @@
 # blokus-study
 
-Experiment page for Ryan Longhurst's economics dissertation (University of Edinburgh): participants play 8x8 Blokus puzzles against a perfect computer opponent.
+Experiment page my economics dissertation : participants play 8x8 Blokus puzzles against a perfect computer opponent.
 
 - `index.html`, `experiment.js`: the study (consent, practice, puzzles, thank-you screen, data sent via DataPipe)
 - `blokus_engine.js`: game rules
