@@ -1,0 +1,72 @@
+{
+ "version": 2,
+ "seed": "426c6f6b75730001",
+ "openings": {
+  "2": {
+   "file": "opening_2.bin",
+   "positions": 1929028,
+   "bytes": 21219324,
+   "startValue": 1
+  },
+  "6": {
+   "file": "opening_6.bin",
+   "positions": 659657,
+   "bytes": 7256243,
+   "startValue": -1
+  },
+  "15": {
+   "file": "opening_15.bin",
+   "positions": 344263,
+   "bytes": 3786909,
+   "startValue": -1
+  },
+  "39": {
+   "file": "opening_39.bin",
+   "positions": 658728,
+   "bytes": 7246024,
+   "startValue": 1
+  },
+  "41": {
+   "file": "opening_41.bin",
+   "positions": 154962,
+   "bytes": 1704598,
+   "startValue": -1
+  },
+  "230": {
+   "file": "opening_230.bin",
+   "positions": 2596064,
+   "bytes": 28556720,
+   "startValue": 1,
+   "parts": [
+    "opening_230.bin.part0",
+    "opening_230.bin.part1"
+   ]
+  },
+  "243": {
+   "file": "opening_243.bin",
+   "positions": 4005283,
+   "bytes": 44058129,
+   "startValue": 1,
+   "parts": [
+    "opening_243.bin.part0",
+    "opening_243.bin.part1"
+   ]
+  },
+  "311": {
+   "file": "opening_311.bin",
+   "positions": 458139,
+   "bytes": 5039545,
+   "startValue": 1
+  },
+  "419": {
+   "file": "opening_419.bin",
+   "positions": 3169620,
+   "bytes": 34865836,
+   "startValue": 1,
+   "parts": [
+    "opening_419.bin.part0",
+    "opening_419.bin.part1"
+   ]
+  }
+ }
+}

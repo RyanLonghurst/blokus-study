@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Blokus puzzles</title>
+<style>
+  /* colours and proportions taken from blokus_game.py */
+  :root {
+    --bg: #ECEEF2;        /* BG */
+    --board: #D6DAE2;     /* BOARD_BG */
+    --grid: #BEC4CE;      /* GRID */
+    --ink: #282C34;       /* TEXT */
+    --muted: #828894;     /* MUTED */
+    --warn: #AA2828;      /* WARN */
+    --blue: #346ED6;
+    --yellow: #E8B414;
+    --used: #C8CCD4;
+    --size: min(8.2vmin, 66px);
+    --radius: max(2px, calc(var(--size) / 9));
+  }
+  #play.me-0 { --me: var(--blue); --me-ghost: rgba(52, 110, 214, .67); --them: var(--yellow); }
+  #play.me-1 { --me: var(--yellow); --me-ghost: rgba(232, 180, 20, .67); --them: var(--blue); }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "Segoe UI", Helvetica, Arial, sans-serif; font-size: 17px; line-height: 1.45;
+  }
+  button { font: inherit; color: inherit; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  /* text that only makes sense with a mouse, or only on a touch screen */
+  .touch-only { display: none; }
+  @media (hover: none) and (pointer: coarse) { .mouse-only { display: none !important; } .touch-only { display: revert; } }
+  button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+  [hidden] { display: none !important; }
+
+  .devbar { background: #DADEE5; color: var(--muted); font-size: 14px; padding: 6px 16px; display: flex; gap: 10px; align-items: center; }
+  .devbar button { font-size: 14px; }
+
+  .btn {
+    background: #fff; border: 2px solid var(--ink); border-radius: 10px; padding: 9px 22px;
+    font-weight: 600; cursor: pointer;
+  }
+  .btn.primary { background: var(--ink); color: #fff; }
+  .btn.quiet { border-color: var(--grid); color: var(--muted); font-weight: 400; }
+  .btn:disabled { opacity: .35; cursor: not-allowed; }
+
+  /* ---- menu, rules, finish */
+  .page { max-width: 640px; margin: 0 auto; padding: 48px 20px; }
+  .page h1 { font-size: 2.2rem; margin: 0 0 6px; }
+  .page h2 { font-size: 1.15rem; margin: 26px 0 6px; }
+  .lead { color: var(--muted); margin: 0 0 28px; }
+  .stack { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
+  .stack .btn { min-width: 240px; }
+  .progress { display: flex; gap: 6px; margin: 0 0 28px; }
+  .progress span { width: 22px; height: 22px; border-radius: 4px; background: var(--board); border: 1px solid var(--grid); }
+  .progress span.done { background: var(--ink); border-color: var(--ink); }
+  .progress span.now { border: 2px solid var(--ink); }
+  .note { color: var(--warn); }
+  .consent p, .consent li { margin: 0 0 8px; }
+  .consent ul { padding-left: 22px; margin: 0; }
+  .check { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 10px; cursor: pointer; }
+  .check input { width: 18px; height: 18px; margin-top: 3px; flex: none; }
+  .field-label { display: block; font-weight: 600; margin: 4px 0 4px; }
+  .field { font: inherit; width: 100%; max-width: 380px; padding: 8px 10px; border: 2px solid var(--grid); border-radius: 8px; background: #fff; margin-bottom: 12px; }
+  .field:focus { outline: none; border-color: var(--ink); }
+  .field:disabled { background: var(--board); color: var(--muted); }
+  .form-hint { color: var(--muted); min-height: 1.5em; margin: 14px 0 12px; }
+  .code { font-weight: 700; letter-spacing: .06em; }
+  .rules p, .rules li { margin: 0 0 8px; }
+  .rules ul { padding-left: 22px; margin: 0; }
+
+  /* ---- playing */
+  #play main { max-width: 1000px; margin: 0 auto; padding: 18px 16px 40px; }
+  .topline { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 10px; }
+  #status { font-size: 1.6rem; font-weight: 700; }
+  #status.me { color: var(--me); }
+  #status.them { color: var(--them); }
+  .meta { color: var(--muted); text-align: right; }
+  #clock { font-size: 1.6rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+  #clock.extra { color: var(--muted); font-size: 1.2rem; }
+
+  .timeup {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+    background: #fff; border: 2px solid var(--ink); border-radius: 10px; padding: 12px 16px; margin-bottom: 16px;
+  }
+  .timeup p { margin: 0; }
+
+  .layout { display: flex; gap: 36px; align-items: flex-start; flex-wrap: wrap; }
+  .board {
+    display: grid; grid-template-columns: repeat(8, var(--size));
+    background: var(--board); user-select: none; touch-action: none; width: max-content;
+  }
+  .cell { width: var(--size); height: var(--size); border: 1px solid var(--grid); position: relative; }
+  /* placed squares sit 1px inside their cell, so pieces show a small gap between squares as in Python */
+  .cell.p0, .cell.p1 { border-color: transparent; border-radius: var(--radius); background-clip: padding-box; }
+  .cell.p0 { background-color: var(--blue); }
+  .cell.p1 { background-color: var(--yellow); }
+  /* the piece being placed: grey where it cannot go, your colour where it can */
+  .cell.gl::after, .cell.gi::after { content: ""; position: absolute; inset: -1px; border-radius: var(--radius); z-index: 1; }
+  .cell.gl::after { background: var(--me-ghost); box-shadow: inset 0 0 0 2px var(--me); }
+  .cell.gi::after { background: rgba(70, 74, 84, .43); box-shadow: inset 0 0 0 2px #464A54; }
+  /* squares where one of your pieces can start */
+  .cell.anchor::after { content: ""; position: absolute; inset: 37%; border-radius: 50%; background: var(--me); opacity: .7; }
+  /* the computer's last move */
+  .cell.last::before { content: ""; position: absolute; inset: -1px; border-radius: var(--radius); box-shadow: inset 0 0 0 3px rgba(40, 44, 52, .55); }
+  .cell.last { animation: flash 1.2s ease-out 1; }
+  @keyframes flash { from { filter: brightness(1.3); } to { filter: none; } }
+  @media (prefers-reduced-motion: reduce) { .cell.last { animation: none; } }
+
+  #message { min-height: 1.6em; margin-top: 8px; color: var(--warn); }
+  .result {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 12px;
+    background: #fff; border: 2px solid var(--ink); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px;
+  }
+  .result .btn { align-self: flex-start; }
+  .result-text { width: 100%; }
+  #resultMain { font-size: 1.4rem; font-weight: 700; }
+  .score { margin-top: 8px; }
+  .score-value { font-size: 1.4rem; font-weight: 700; }
+  #scoreChange { margin-left: 6px; font-weight: 600; }
+  #scoreChange.up { color: #1F7A3A; }
+  #scoreChange.down { color: var(--warn); }
+  .score-note { color: var(--muted); font-size: 14px; }
+
+  .side { flex: 1; min-width: 260px; max-width: 320px; }
+  .side h2 { font-size: 1rem; margin: 0 0 6px; }
+  .tray { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 14px; user-select: none; -webkit-user-select: none; }
+  .piece {
+    background: transparent; border: 3px solid transparent; border-radius: 8px; height: 66px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+  }
+  @media (hover: hover) { .piece:hover:not(:disabled) { background: rgba(255, 255, 255, .55); } }
+  .piece.selected { background: #fff; border-color: var(--me); }
+  .piece:disabled { cursor: default; }
+  .mini { display: grid; gap: 1px; }
+  .mini span { width: 12px; height: 12px; }
+  .mini span.on.c0 { background: var(--blue); }
+  .mini span.on.c1 { background: var(--yellow); }
+  .mini span.off { box-shadow: inset 0 0 0 1px var(--used); }
+  .controls { display: flex; gap: 8px; margin-bottom: 8px; }
+  .controls button { background: #fff; border: 2px solid var(--grid); border-radius: 8px; padding: 5px 14px; cursor: pointer; }
+  .hint { color: var(--muted); font-size: 15px; margin: 0 0 20px; }
+  .their { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 22px; }
+  .their .mini span { width: 9px; height: 9px; }
+
+  /* rules shown on top of a game */
+  .overlay { position: fixed; inset: 0; background: rgba(40, 44, 52, .45); display: flex; align-items: flex-start; justify-content: center; overflow: auto; padding: 40px 16px; z-index: 10; }
+  .overlay .page { background: var(--bg); border-radius: 12px; padding: 28px 32px; }
+
+  /* ---- phones: board fills the width, pieces and buttons sit straight under it */
+  @media (max-width: 700px) {
+    :root { --size: min(56px, calc((100vw - 26px) / 8), max(32px, calc((100vh - 330px) / 8))); }
+    body { font-size: 16px; }
+    .page { padding: 28px 16px 40px; }
+    .page h1 { font-size: 1.8rem; }
+    .stack .btn { min-width: 0; width: 100%; padding: 12px 22px; }
+    #play main { padding: 10px 12px 32px; }
+    .topline { margin-bottom: 8px; gap: 10px; }
+    #status, #clock { font-size: 1.25rem; }
+    #clock.extra { font-size: 1rem; }
+    .meta { font-size: 14px; }
+    .layout { gap: 8px; flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
+    .layout > div:first-child { align-self: center; }
+    .side { min-width: 0; max-width: none; width: 100%; display: flex; flex-direction: column; }
+    /* keep the pieces and buttons straight under the board; the time-up note goes below them */
+    .side > * { order: 4; }
+    .side > #result { order: 0; }
+    .side > #tray { order: 1; }
+    .side > .controls { order: 2; }
+    .side > #timeup { order: 3; }
+    .side > h2.yours { display: none; }
+    #message { min-height: 1.4em; margin-top: 4px; }
+    .tray { grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 10px; }
+    .piece { height: 54px; }
+    .controls button { flex: 1; padding: 10px 8px; }
+    .result, .timeup { margin-bottom: 10px; }
+    .overlay { padding: 12px; }
+    .overlay .page { padding: 20px 16px; }
+  }
+</style>
+</head>
+<body>
+<div id="devbar" class="devbar" hidden>
+  Testing only:
+  <button id="devReset">Reset session</button>
+  <button id="devSkip">Jump to end of required time</button>
+  <button id="devDownload">Download data</button>
+</div>
+
+<!-- ---------------------------------------------------------------- consent -->
+<!-- EDIT: make this wording match the approved ethics application.
+     Everything in [square brackets] still needs filling in. -->
+<section id="consent" hidden>
+  <div class="page consent">
+    <h1>Before you start</h1>
+    <p class="lead">Please read this information before deciding whether to take part.</p>
+
+    <h2>About the study</h2>
+    <p>This study is part of an undergraduate economics dissertation at the University of Edinburgh, run by Ryan Longhurst
+      and supervised by [supervisor name]. It looks at how people learn to solve puzzles in the board game Blokus.
+      [Ethics approval reference.]</p>
+
+    <h2>What you will do</h2>
+    <ul>
+      <li>Play a short practice game to learn the controls.</li>
+      <li>Play one Blokus puzzle against a computer that plays perfectly, for 10 minutes. You can play it as many times
+        as you like in that time, and keep going after the 10 minutes if you want to. This takes about 15 minutes
+        including the practice game.</li>
+      <li>After that you can stop, or, if you enjoyed it, play more puzzles: up to nine in total, 10 minutes each.
+        You can stop after any puzzle.</li>
+      <li>The study works on a computer, tablet or phone. If you close the page, your progress is saved in this
+        browser and you can carry on later.</li>
+    </ul>
+
+    <h2>What is recorded</h2>
+    <ul>
+      <li>Every move you make and when you make it, the pieces you pick up and turn, and when this page is in the
+        background. Also your browser type and screen size.</li>
+      <li>Your name is not recorded. Your games are saved under a random code and stored on the Open Science Framework
+        (OSF). [Who can access the data, how long it is kept, and whether anonymised data will be shared.]</li>
+    </ul>
+
+    <h2>Your rights</h2>
+    <ul>
+      <li>Taking part is voluntary. You can stop at any time by closing this page.</li>
+      <li>If you later want your data removed, email the researcher at
+        <a class="researcher-email"></a> with the participant code shown at the end of the study.</li>
+      <li>If you do not want to take part, simply close this page. Nothing is sent unless you agree below.</li>
+    </ul>
+
+    <h2>Prizes</h2>
+    <ul>
+      <li>For each of the nine puzzles there is a prize of [amount] for the participant with the best accuracy on that
+        puzzle. Accuracy is judged on your best single attempt. Ties are decided by a random draw.</li>
+      <li>To enter, give your email address below. It is used only to contact winners, is stored separately from your
+        game data, and is deleted once prizes have been paid. You can take part without entering.</li>
+    </ul>
+
+    <h2>Consent</h2>
+    <label class="check"><input type="checkbox" id="consentRead"> <span>I have read and understood the information above.</span></label>
+    <label class="check"><input type="checkbox" id="consentAge"> <span>I am 18 or over.</span></label>
+    <label class="check"><input type="checkbox" id="consentAgree"> <span>I agree to take part, and for my game data to be used as described above.</span></label>
+
+    <h2>Prize entry (optional)</h2>
+    <label class="field-label" for="prizeEmail">Email address</label>
+    <input class="field" type="email" id="prizeEmail" autocomplete="email" spellcheck="false">
+    <label class="check"><input type="checkbox" id="noPrize"> <span>I don't want to enter for a prize.</span></label>
+
+    <p id="consentHint" class="form-hint" aria-live="polite"></p>
+    <button id="consentBtn" class="btn primary" disabled>Continue</button>
+  </div>
+</section>
+
+<!-- ---------------------------------------------------------------- menu -->
+<section id="menu" hidden>
+  <div class="page">
+    <h1>Blokus puzzles</h1>
+    <p id="menuLead" class="lead"></p>
+    <div id="progress" class="progress"></div>
+    <div class="stack">
+      <button id="startBtn" class="btn primary"></button>
+      <button id="rulesBtn" class="btn">Rules</button>
+    </div>
+    <p id="storageNote" class="note" hidden>This browser is not saving your progress. Please keep this page open until you have finished.</p>
+  </div>
+</section>
+
+<!-- ---------------------------------------------------------------- rules -->
+<template id="rulesText">
+  <h2>The game</h2>
+  <ul>
+    <li>The board is 8 by 8. You and the computer each have the same nine pieces, made of one to four squares.</li>
+    <li>Blue starts in the top left corner and Yellow in the bottom right. Each player's first piece must cover their own corner.</li>
+    <li>Players take turns placing one piece. Each new piece must touch one of your own pieces corner to corner, and must not touch any of your own pieces along a side. Touching the other player's pieces is allowed.</li>
+    <li>If you cannot place any piece, you are out and the other player carries on. The game ends when nobody can move.</li>
+  </ul>
+  <h2>Scoring</h2>
+  <ul>
+    <li>You lose 1 point for every square of your pieces left unplaced. If you place all nine pieces, you score 15 instead.</li>
+    <li>The higher score wins. The margin is the difference between the two scores.</li>
+  </ul>
+  <h2>The puzzles</h2>
+  <ul>
+    <li>Each puzzle starts with one piece already placed for each player. Sometimes you play Blue, sometimes Yellow.</li>
+    <li>The computer plays perfectly. In every puzzle, perfect play wins by exactly 1 point, and that is the best result possible.</li>
+    <li>You have 10 minutes for each puzzle and can play it as many times as you like. After 10 minutes you can finish the puzzle, or keep playing for as long as you want.</li>
+    <li>After each game you get a score out of 100 as a rough guide to how well you played. 100 means every move was perfect. The score is not used to decide prizes.</li>
+  </ul>
+  <h2>Controls</h2>
+  <ul>
+    <li class="mouse-only">Click a piece to pick it up, then click the board to place it. A grey shadow means it cannot go there; a coloured shadow means it can.</li>
+    <li class="mouse-only">R or scrolling over the board rotates the piece, F flips it, and Esc puts it back.</li>
+    <li class="touch-only">Tap a piece to pick it up, then tap or drag on the board to move its shadow. A grey shadow means it cannot go there; a coloured shadow means it can. Tap the shadow again to place the piece.</li>
+    <li class="touch-only">Use the Rotate and Flip buttons to turn the piece. Tap the piece again to put it back.</li>
+    <li>Dots mark the squares where a new piece of yours can start.</li>
+  </ul>
+</template>
+<section id="rules" hidden>
+  <div class="page rules">
+    <h1>Rules</h1>
+    <div class="rules-body"></div>
+    <p style="margin-top: 28px"><button id="rulesBack" class="btn primary">Back to menu</button></p>
+  </div>
+</section>
+<div id="rulesOverlay" class="overlay" hidden>
+  <div class="page rules">
+    <h1>Rules</h1>
+    <div class="rules-body"></div>
+    <p style="margin-top: 28px"><button id="rulesClose" class="btn primary">Back to the game</button></p>
+  </div>
+</div>
+
+<!-- ---------------------------------------------------------------- playing -->
+<section id="play" hidden>
+  <main>
+    <div class="topline">
+      <div>
+        <div id="status" role="status" aria-live="polite"></div>
+        <div id="roundInfo" class="meta" style="text-align: left"></div>
+      </div>
+      <div class="meta">
+        <div id="clock"></div>
+        <div id="attemptInfo"></div>
+        <div id="bestInfo"></div>
+      </div>
+    </div>
+    <div class="layout">
+      <div>
+        <div id="board" class="board"></div>
+        <div id="message" aria-live="polite"></div>
+      </div>
+      <div class="side">
+        <div id="result" class="result" hidden>
+          <div class="result-text">
+            <div id="resultMain"></div><div id="resultSub"></div>
+            <div id="resultScore" class="score" hidden>
+              Score <span id="scoreValue" class="score-value"></span> out of 100 <span id="scoreChange"></span>
+              <div class="score-note">A rough guide to how well you played: 100 means every move was perfect. Not used for prizes.</div>
+            </div>
+          </div>
+          <button id="againBtn" class="btn primary">Try again</button>
+          <button id="practiceDoneBtn" class="btn" hidden>Back to menu</button>
+        </div>
+        <div id="timeup" class="timeup" hidden>
+          <p id="timeupText"></p>
+          <button id="nextBtn" class="btn primary"></button>
+        </div>
+        <h2 class="yours">Your pieces</h2>
+        <div id="tray" class="tray"></div>
+        <div class="controls">
+          <button id="rotateBtn">Rotate<span class="mouse-only"> (R)</span></button>
+          <button id="flipBtn">Flip<span class="mouse-only"> (F)</span></button>
+          <button id="playRulesBtn">Rules</button>
+        </div>
+        <p class="hint mouse-only">Pick a piece, then click the board to place it. Scrolling over the board also rotates. Esc puts the piece back.</p>
+        <p class="hint touch-only">Pick a piece, then tap or drag on the board to move its shadow. Tap the shadow again to place it.</p>
+        <h2>Computer's pieces</h2>
+        <div id="their" class="their"></div>
+      </div>
+    </div>
+  </main>
+</section>
+
+<!-- ---------------------------------------------------------------- thanks, with the option to play more -->
+<section id="thanks" hidden>
+  <div class="page">
+    <h1>Thank you for taking part</h1>
+    <p id="thanksLead" class="lead"></p>
+    <div id="thanksProgress" class="progress"></div>
+    <p id="thanksStatus" aria-live="polite"></p>
+    <div id="thanksFallback" hidden>
+      <p>Please download your data file and email it to the researcher at <a class="researcher-email"></a>.</p>
+      <div class="stack" style="margin-bottom: 24px"><button id="thanksDownloadBtn" class="btn">Download data</button></div>
+    </div>
+    <h2>Want to help more?</h2>
+    <p id="thanksMore"></p>
+    <div class="stack" style="margin-top: 18px">
+      <button id="moreBtn" class="btn primary"></button>
+      <button id="finishBtn" class="btn">Finish here</button>
+    </div>
+    <p id="thanksCode" style="margin-top: 28px"></p>
+  </div>
+</section>
+
+<!-- ---------------------------------------------------------------- finished -->
+<section id="done" hidden>
+  <div class="page">
+    <h1>All done</h1>
+    <p id="doneLead" class="lead">Thank you for taking part.</p>
+    <p id="doneStatus" aria-live="polite"></p>
+    <div id="doneFallback" hidden>
+      <p>Please download your data file and email it to the researcher at <a class="researcher-email"></a>.</p>
+      <div class="stack"><button id="doneDownloadBtn" class="btn primary">Download data</button></div>
+    </div>
+    <p id="doneCode" style="margin-top: 28px"></p>
+  </div>
+</section>
+
+<script src="blokus_engine.js"></script>
+<script src="blokus_lookup.js"></script>
+<script src="experiment.js"></script>
+</body>
+</html>
