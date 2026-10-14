@@ -48,6 +48,7 @@ const sideOf = opening => OPENINGS.find(([o]) => o === opening)[1];
 // ---------------------------------------------------------------- session and log
 let session = null;
 let storageOk = true;
+let returnVisit = false;   // true from loading a saved session until the participant starts playing again
 
 const nowEpoch = () => performance.timeOrigin + performance.now();
 
@@ -127,12 +128,16 @@ function download() {
 }
 
 // ---------------------------------------------------------------- sending data to DataPipe
-async function sendToDataPipe(experimentID, filename, text) {
+// leaving: the page is being hidden or closed, so ask the browser to finish the request
+// anyway (browsers only allow this for small requests, under about 64 KB).
+async function sendToDataPipe(experimentID, filename, text, leaving = false) {
   try {
+    const body = JSON.stringify({ experimentID, filename, data: text });
     const r = await fetch(DATAPIPE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "*/*" },
-      body: JSON.stringify({ experimentID, filename, data: text }),
+      body,
+      keepalive: leaving && body.length < 60000,
     });
     return { ok: r.ok, status: r.status };
   } catch (e) {
@@ -142,12 +147,13 @@ async function sendToDataPipe(experimentID, filename, text) {
 
 // Sends the whole log so far as a new file (DataPipe needs a new file name each time).
 // The latest file for a participant contains everything in the earlier ones.
-async function uploadLog(label) {
+async function uploadLog(label, leaving = false) {
   if (!PIPE.data) return false;
   session.uploads++;
-  const filename = `${session.participant}_${String(session.uploads).padStart(2, "0")}_${label}.json`;
+  const filename = `${session.participant}_${String(session.uploads).padStart(3, "0")}_${label}.json`;
   record("upload_start", { label, filename });
-  const res = await sendToDataPipe(PIPE.data, filename, JSON.stringify(session));
+  session.eventsAtUpload = session.events.length;
+  const res = await sendToDataPipe(PIPE.data, filename, JSON.stringify(session), leaving);
   record(res.ok ? "upload_ok" : "upload_failed", { label, filename, status: res.status, error: res.error || null });
   if (res.ok) { session.sentThrough = Math.max(session.sentThrough || 0, session.round); save(); }
   return res.ok;
@@ -172,6 +178,21 @@ async function sendWithStatus(label, statusEl, fallbackEl) {
     fallbackEl.hidden = false;
     return false;
   }
+}
+
+// When the page is hidden or closed partway through, send what has been played so far,
+// so games from an unfinished puzzle are not lost if the participant never comes back.
+// At most once a minute, and only if something new has happened since the last upload.
+let lastLeaveUpload = 0;
+function uploadOnLeave() {
+  if (!PIPE.data || !session || !session.consent || session.finished) return;
+  const now = Date.now();
+  if (now - lastLeaveUpload < 60000) return;
+  const fresh = session.events.length - (session.eventsAtUpload || 0);
+  if (fresh < 5) return;
+  lastLeaveUpload = now;
+  if (session.active) tick();
+  uploadLog("pause", true);
 }
 
 // The prize email is kept in its own browser storage entry (never in the game log) until it
@@ -223,7 +244,7 @@ function showMenu() {
     lead = "Start with a practice game to learn the controls. It does not count.";
     start = "Start practice game";
   } else if (session.active) {
-    lead = `Puzzle ${n} was interrupted. You can carry on with the time you had left.`;
+    lead = (returnVisit ? "Welcome back. " : "") + `Puzzle ${n} was interrupted. You can carry on with the time you had left.`;
     start = `Continue puzzle ${n}`;
   } else if (n === 1) {
     lead = required === 1
@@ -236,6 +257,8 @@ function showMenu() {
   }
   $("menuLead").textContent = lead;
   $("startBtn").textContent = start;
+  $("menuLater").textContent = "You don't have to do everything in one sitting. Your progress is saved in this browser, "
+    + "so you can stop after any puzzle, or partway through one, and come back later on this device to carry on.";
   $("progress").hidden = session.round === 0 && !session.active;
   progressBoxes($("progress"), session.practiceDone);
   show("menu");
@@ -349,6 +372,7 @@ async function startRound(btn = $("startBtn"), messageEl = $("menuLead")) {
 }
 
 function enterPlay() {
+  returnVisit = false;
   $("play").className = `me-${game.human}`;
   show("play");
   newAttempt();
@@ -442,15 +466,24 @@ function finishSession(early) {
 // participant can stop or carry on with more puzzles, up to all nine.
 function showThanks(uploadLabel = null) {
   const played = session.round, total = session.order.length, left = total - played;
+  const back = returnVisit;
   show("thanks");
-  record("thanks_shown", { puzzles: played });
-  $("thanksLead").textContent = (played === 1 ? "You have finished the puzzle." : `You have finished ${played} puzzles.`)
-    + " That is everything the study needs from you, so you can stop here.";
+  record("thanks_shown", { puzzles: played, returning: back });
+  $("thanksTitle").textContent = back ? "Welcome back" : played === 1 ? "Thank you for taking part" : `Puzzle ${played} done`;
+  $("thanksLead").textContent = back ? "Thank you for coming back. You can carry on from your next puzzle."
+    : played === 1 ? "You have finished your first puzzle. Thank you!" : "Thank you, that really helps.";
   progressBoxes($("thanksProgress"), false);
-  $("thanksMore").textContent = "If you enjoyed it and would like to help more, you can play as many more puzzles as you like, "
-    + `up to ${total} in total (${left} left). Each one takes ${ROUND_MINUTES} minutes and you can stop after any of them.`
+  $("thanksCount").textContent = `${played} of ${total} puzzles done`;
+  $("thanksMoreTitle").textContent = "Can you do more?";
+  $("thanksMore").textContent = "Every puzzle you play makes the study more useful, so "
+    + (left === 1 ? `please play the last puzzle if you can (${ROUND_MINUTES} minutes).`
+                  : `please play as many of the remaining ${left} puzzles as you can (${ROUND_MINUTES} minutes each).`)
     + (session.consent && session.consent.prizeEntered ? " Every puzzle has its own prize, so each one you play is another chance to win." : "");
-  $("moreBtn").textContent = "Play another puzzle";
+  $("thanksLater").textContent = (left === 1 ? "You don't have to do it now." : "You don't have to do them all now.") + " Your progress is saved in this browser, so you can "
+    + "take a break and come back later, as many times as you like, and carry on from your next puzzle.";
+  $("moreBtn").textContent = "Play the next puzzle";
+  $("breakBtn").hidden = false;
+  $("breakNote").hidden = true;
   $("thanksCode").innerHTML = `Your participant code is <span class="code">${session.participant}</span>. ` +
     "Keep it if you might want your data removed later.";
   if (!uploadLabel && (session.sentThrough || 0) >= played) {
@@ -459,6 +492,16 @@ function showThanks(uploadLabel = null) {
   } else {
     sendWithStatus(uploadLabel || `round${played}`, $("thanksStatus"), $("thanksFallback"));
   }
+}
+
+function takeBreak() {
+  record("break", { puzzles: session.round });
+  const url = location.origin + location.pathname;
+  $("breakLink").textContent = url;
+  $("breakLink").href = url;
+  $("breakBtn").hidden = true;
+  $("breakNote").hidden = false;
+  $("breakNote").scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
 // Finish screen: sends the final log, trying three times; if that fails, or DataPipe is
@@ -906,6 +949,7 @@ function wireInput() {
   $("nextBtn").addEventListener("click", endRound);
   $("moreBtn").addEventListener("click", () => { record("play_more", { puzzles: session.round }); startRound($("moreBtn"), $("thanksMore")); });
   $("finishBtn").addEventListener("click", () => finishSession(true));
+  $("breakBtn").addEventListener("click", takeBreak);
   $("thanksDownloadBtn").addEventListener("click", download);
 
   $("startBtn").addEventListener("click", startFromMenu);
@@ -922,7 +966,10 @@ function wireInput() {
     a.href = `mailto:${RESEARCHER_EMAIL}?subject=Blokus study`;
   }
 
-  document.addEventListener("visibilitychange", () => record("visibility", { state: document.visibilityState }));
+  document.addEventListener("visibilitychange", () => {
+    record("visibility", { state: document.visibilityState });
+    if (document.visibilityState === "hidden") uploadOnLeave();
+  });
   window.addEventListener("blur", () => record("window_blur"));
   window.addEventListener("focus", () => record("window_focus"));
   window.addEventListener("pagehide", () => { tick(); save(); });
@@ -946,6 +993,7 @@ function main() {
   wireInput();
   const saved = load();
   session = saved || newSession();
+  returnVisit = !!saved && session.practiceDone && !session.finished;
   record("page_load", { resumed: !!saved });
   if (!storageOk) $("storageNote").hidden = false;
   if (saved && session.active) {

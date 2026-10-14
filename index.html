@@ -59,6 +59,7 @@
   .progress span.done { background: var(--ink); border-color: var(--ink); }
   .progress span.now { border: 2px solid var(--ink); }
   .note { color: var(--warn); }
+  .menu-later { color: var(--muted); margin-top: 24px; }
   .consent p, .consent li { margin: 0 0 8px; }
   .consent ul { padding-left: 22px; margin: 0; }
   .check { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 10px; cursor: pointer; }
@@ -70,6 +71,11 @@
   .form-hint { color: var(--muted); min-height: 1.5em; margin: 14px 0 12px; }
   .code { font-weight: 700; letter-spacing: .06em; }
   .rules p, .rules li { margin: 0 0 8px; }
+  .progress-count { color: var(--muted); margin: -18px 0 22px; }
+  .break-note { background: #fff; border: 2px solid var(--ink); border-radius: 10px; padding: 12px 16px; margin-top: 16px; }
+  .break-note p { margin: 0 0 8px; }
+  .break-note p:last-child { margin-bottom: 0; }
+  .break-link { word-break: break-all; font-weight: 600; color: var(--ink); }
   .rules ul { padding-left: 22px; margin: 0; }
 
   /* ---- playing */
@@ -206,13 +212,14 @@
     <h2>What you will do</h2>
     <ul>
       <li>Play a short practice game to learn the controls.</li>
-      <li>Play one Blokus puzzle against a computer that plays perfectly, for 10 minutes. You can play it as many times
-        as you like in that time, and keep going after the 10 minutes if you want to. This takes about 15 minutes
-        including the practice game.</li>
-      <li>After that you can stop, or, if you enjoyed it, play more puzzles: up to nine in total, 10 minutes each.
-        You can stop after any puzzle.</li>
-      <li>The study works on a computer, tablet or phone. If you close the page, your progress is saved in this
-        browser and you can carry on later.</li>
+      <li>Play Blokus puzzles against a computer that plays perfectly. There are nine puzzles, 10 minutes each. You can
+        play each puzzle as many times as you like in its 10 minutes, and keep going after that if you want to.</li>
+      <li>The first puzzle takes about 15 minutes including the practice game. Every puzzle after that helps the
+        study, so please do as many as you can, but you can stop whenever you like.</li>
+      <li><strong>You do not need to do it all in one go.</strong> Your progress is saved in this browser, so you can
+        stop after any puzzle, or even partway through one, and come back later to carry on where you left off. Use
+        the same device and browser when you come back (not a private or incognito window).</li>
+      <li>The study works on a computer, tablet or phone.</li>
     </ul>
 
     <h2>What is recorded</h2>
@@ -264,6 +271,7 @@
       <button id="startBtn" class="btn primary"></button>
       <button id="rulesBtn" class="btn">Rules</button>
     </div>
+    <p id="menuLater" class="menu-later"></p>
     <p id="storageNote" class="note" hidden>This browser is not saving your progress. Please keep this page open until you have finished.</p>
   </div>
 </section>
@@ -287,6 +295,7 @@
     <li>Each puzzle starts with one piece already placed for each player. Sometimes you play Blue, sometimes Yellow.</li>
     <li>The computer plays perfectly. In every puzzle, perfect play wins by exactly 1 point, and that is the best result possible.</li>
     <li>You have 10 minutes for each puzzle and can play it as many times as you like. After 10 minutes you can finish the puzzle, or keep playing for as long as you want.</li>
+    <li>You can do the puzzles over several sittings. Your progress is saved in this browser, so you can close the page and come back later on the same device to carry on.</li>
     <li>After each game you get a score out of 100 as a rough guide to how well you played. 100 means every move was perfect. The score is not used to decide prizes.</li>
   </ul>
   <h2>Controls</h2>
@@ -367,20 +376,29 @@
 <!-- ---------------------------------------------------------------- thanks, with the option to play more -->
 <section id="thanks" hidden>
   <div class="page">
-    <h1>Thank you for taking part</h1>
+    <h1 id="thanksTitle">Thank you for taking part</h1>
     <p id="thanksLead" class="lead"></p>
     <div id="thanksProgress" class="progress"></div>
+    <p id="thanksCount" class="progress-count"></p>
     <p id="thanksStatus" aria-live="polite"></p>
     <div id="thanksFallback" hidden>
       <p>Please download your data file and email it to the researcher at <a class="researcher-email"></a>.</p>
       <div class="stack" style="margin-bottom: 24px"><button id="thanksDownloadBtn" class="btn">Download data</button></div>
     </div>
-    <h2>Want to help more?</h2>
+    <h2 id="thanksMoreTitle">Want to help more?</h2>
     <p id="thanksMore"></p>
+    <p id="thanksLater"></p>
     <div class="stack" style="margin-top: 18px">
       <button id="moreBtn" class="btn primary"></button>
-      <button id="finishBtn" class="btn">Finish here</button>
+      <button id="breakBtn" class="btn">Take a break and come back later</button>
     </div>
+    <div id="breakNote" class="break-note" hidden>
+      <p><strong>Your progress is saved.</strong> You can close this page now. To carry on, open this page again in
+        this browser on this device:</p>
+      <p><a id="breakLink" class="break-link"></a></p>
+      <p>Bookmarking it makes it easy to find. You will start from your next puzzle.</p>
+    </div>
+    <p style="margin-top: 22px"><button id="finishBtn" class="btn quiet">I'm finished with the study</button></p>
     <p id="thanksCode" style="margin-top: 28px"></p>
   </div>
 </section>
