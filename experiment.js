@@ -301,7 +301,7 @@ function showMenu() {
   $("progress").hidden = !session.quizPassed;
   progressBoxes($("progress"), true);
   show("menu");
-  if (session.quizPassed && session.round < total()) loadTable(session.order[session.round]).catch(() => {});
+  prefetchAhead();
 }
 
 function startFromMenu() {
@@ -409,20 +409,79 @@ function checkQuiz() {
 }
 
 // ---------------------------------------------------------------- opponent tables
+// The opponent files are large (2 to 44 MB), so they are downloaded in the background as
+// early as possible: from the consent page onwards, the next two puzzles in order, one file
+// at a time. progress[opening] = {loaded, total} in bytes, for the loading message.
 const tables = {};
+const progress = {};
 let manifest = null;
+
+async function getManifest() {
+  if (!manifest) manifest = await (await fetch(DATA_DIR + "manifest.json")).json();
+  return manifest;
+}
+
+async function downloadParts(opening, urls, total) {
+  progress[opening] = { loaded: 0, total };
+  const pieces = [];
+  for (const url of urls) {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Could not download ${url} (${response.status}).`);
+    if (!response.body || !response.body.getReader) {           // older browsers: no progress
+      const buf = new Uint8Array(await response.arrayBuffer());
+      pieces.push(buf);
+      progress[opening].loaded += buf.length;
+      continue;
+    }
+    const reader = response.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      pieces.push(value);
+      progress[opening].loaded += value.length;
+    }
+  }
+  const joined = new Uint8Array(pieces.reduce((n, p) => n + p.length, 0));
+  let at = 0;
+  for (const p of pieces) { joined.set(p, at); at += p.length; }
+  progress[opening].loaded = progress[opening].total = joined.length;
+  return joined.buffer;
+}
+
 function loadTable(opening) {
   if (!tables[opening]) {
     tables[opening] = (async () => {
-      if (!manifest) manifest = await (await fetch(DATA_DIR + "manifest.json")).json();
-      const info = manifest.openings[String(opening)];
-      const table = await loadReplyTable(info.parts ? info.parts.map(f => DATA_DIR + f) : DATA_DIR + info.file);
+      const info = (await getManifest()).openings[String(opening)];
+      const urls = (info.parts || [info.file]).map(f => DATA_DIR + f);
+      const table = new ReplyTable(await downloadParts(opening, urls, info.bytes));
       if (!table.values) throw new Error("This version needs opponent files with position values (version 2).");
       return table;
     })();
-    tables[opening].catch(() => delete tables[opening]);
+    tables[opening].catch(() => { delete tables[opening]; delete progress[opening]; });
   }
   return tables[opening];
+}
+
+// Downloads the current puzzle and the one after it, one file at a time, without blocking anything.
+let prefetching = false;
+async function prefetchAhead() {
+  if (prefetching || !session || session.finished) return;
+  prefetching = true;
+  try {
+    const start = session.active ? session.active.index : session.round;
+    for (const opening of session.order.slice(start, start + 2)) {
+      try { await loadTable(opening); } catch (e) { break; }   // a failure is retried when the puzzle starts
+    }
+  } finally {
+    prefetching = false;
+  }
+}
+
+function loadingLabel(opening) {
+  const p = progress[opening];
+  if (!p || !p.total) return "Loading puzzle";
+  const pct = Math.min(99, Math.floor(100 * p.loaded / p.total));
+  return `Loading puzzle: ${pct}%`;
 }
 
 // Start position for a mid-game puzzle: both sides play perfect moves (the hinted move for
@@ -496,7 +555,9 @@ async function startRound(btn = $("startBtn"), messageEl = $("menuLead")) {
   const opening = session.order[index];
   const label = btn.textContent;
   btn.disabled = true;
-  btn.textContent = "Loading puzzle";
+  btn.textContent = loadingLabel(opening);
+  const ticker = setInterval(() => { btn.textContent = loadingLabel(opening); }, 250);
+  const waitStart = performance.now();
   let table;
   try {
     table = await loadTable(opening);
@@ -505,9 +566,12 @@ async function startRound(btn = $("startBtn"), messageEl = $("menuLead")) {
     messageEl.textContent = "The puzzle could not be downloaded. Please check your internet connection and try again.";
     return;
   } finally {
+    clearInterval(ticker);
     btn.disabled = false;
     btn.textContent = label;
   }
+  const waitedMs = Math.round(performance.now() - waitStart);
+  if (waitedMs > 500) record("download_wait", { opening, waitedMs });
   const side = SIDES[opening];
   if (!resumed) {
     const mid = !!session.midGame[opening];
@@ -531,6 +595,7 @@ async function startRound(btn = $("startBtn"), messageEl = $("menuLead")) {
   selected = null;
   enterPlay();
   afterMove();
+  prefetchAhead();          // next puzzle downloads while this one is played
 }
 
 // ---------------------------------------------------------------- moves
@@ -1136,6 +1201,7 @@ function main() {
   if (session.finished) showDone();
   else if (!session.consent) show("consent");
   else showMenu();
+  prefetchAhead();          // start downloading straight away, even on the consent page
   if (session.consent) sendContact();
 
   if (DEV) {
