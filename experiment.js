@@ -1,101 +1,142 @@
 "use strict";
-// Participant flow for the Blokus experiment: menu, rules, practice game, then each
-// experiment opening as a timed round against the stored perfect opponent.
-// Everything that happens is recorded in session.events and saved in the browser,
-// so closing and reopening the page carries on where the participant left off.
+// Blokus experiment: paying for hints against a perfect opponent.
+//
+// Each puzzle is one of the nine solved openings, played once (a single game) against the
+// stored perfect opponent. Before every move the participant can buy hints: which piece,
+// where to start it, or the whole move. The price is drawn at random for each move, and on
+// some moves no hints are offered. Each puzzle also has random stakes: the result counts
+// once or twice (hint prices stay the same).
+//   Points for a puzzle = stakes x final margin - hint costs.
+// At the end one finished puzzle is drawn at random to decide payment.
+//
+// Puzzles come in a fixed order (ORDER). The first REQUIRED_PUZZLES are required; after
+// them a thank-you screen invites the participant to carry on, up to all nine.
+//
+// Everything is recorded in session.events and saved in the browser, so a participant can
+// close the page and carry on later. An interrupted puzzle is restored move by move with
+// the same prices and hints, so reloading cannot be used to retry.
 
 // ---------------------------------------------------------------- settings
-const APP_VERSION = "0.5";
-// Experiment openings and the side the participant plays (0 = Blue, 1 = Yellow).
-const OPENINGS = [[311, 0], [39, 0], [230, 0], [419, 0], [243, 0], [2, 0], [41, 1], [15, 1], [6, 1]];
-const TARGET_MARGIN = 1;           // best possible result in every opening: a win by 1
-const ROUND_MINUTES = 10;          // required time on each puzzle
-const REQUIRED_PUZZLES = 1;        // puzzles everyone plays; after these, a thank-you screen offers more (up to all nine)
-const COMPUTER_DELAY_MS = 700;     // pause before each computer move
-const STORAGE_KEY = "blokus-experiment-session";
-const CONTACT_KEY = "blokus-experiment-contact";   // prize email, kept apart from the game data
-const RESEARCHER_EMAIL = "ryanlonghurst05@icloud.com";
-const CONSENT_VERSION = "draft-1";                  // change whenever the consent wording changes
+const APP_VERSION = "hints-1.0";
+const SIDES = { 311: 0, 39: 0, 230: 0, 419: 0, 243: 0, 2: 0, 41: 1, 15: 1, 6: 1 };   // 0 = Blue, 1 = Yellow
+// Fixed order for everyone: easy, hard and a Yellow puzzle come first, so the required part
+// covers a spread of difficulty. Change here if needed.
+const ORDER = [311, 243, 41, 230, 15, 39, 2, 419, 6];
+const REQUIRED_PUZZLES = 3;
+const TARGET_MARGIN = 1;              // best possible result in every opening: a win by 1
+const DATA_DIR = "opponent_web/";
 
-// DataPipe experiment IDs (from pipe.jspsych.org). Two separate experiments, so the prize
-// emails go to a different OSF component from the game data. While these are empty,
-// nothing is sent and the finish screen asks participants to download and email their file.
+// Hints: a price p is drawn for each move; "which piece" costs p, "where" costs p, the whole move 2p.
+const HINT_PRICES = [0.25, 0.5, 1, 2];
+const FULL_FACTOR = 2;
+const NO_HINT_SHARE = 0.2;            // share of moves with no hints (a clean measure of each person's skill)
+// Stakes: each puzzle's result is multiplied by one of these; hint prices are not.
+// Assigned so each participant gets as close to equal numbers of each as possible.
+const STAKES = [1, 2];
+// Optional mid-game starts (off): share of puzzles that start after a few perfect moves each.
+const START_DEPTH_SHARE = 0;
+const START_EXTRA_MOVES = { default: 2, 2: 1, 41: 1 };
+
+const COMPUTER_DELAY_MS = 700;
+const STORAGE_KEY = "blokus-hints-session";   // new key: saved sessions from the old version are not mixed in
+const CONTACT_KEY = "blokus-hints-contact";
+const RESEARCHER_EMAIL = "ryanlonghurst05@icloud.com";
+const CONSENT_VERSION = "hints-draft-1";
+
+// DataPipe experiment IDs (pipe.jspsych.org). While empty, nothing is sent and the finish
+// screen asks participants to download their file and email it.
 const DATAPIPE_DATA_ID = "";
 const DATAPIPE_CONTACT_ID = "";
 const DATAPIPE_URL = "https://pipe.jspsych.org/api/data/";
 const COLOUR = ["Blue", "Yellow"];
 
 // Testing switches, only active with ?dev=1 in the address:
-//   &minutes=0.1      shorter required time
-//   &order=311,41     fixed list of openings instead of a random order of all nine
-//   &puzzles=2        number of required puzzles before the thank-you screen
-//   &pipe=ID          DataPipe experiment ID for game data (e.g. a test experiment)
-//   &contactpipe=ID   DataPipe experiment ID for prize emails
+//   &order=311,41    puzzles to play, in this order
+//   &puzzles=2       number of required puzzles before the thank-you screen
+//   &nohint=0        share of moves without hints
+//   &stakes=2        every puzzle at these stakes
+//   &depth=1         every puzzle starts mid-game
+//   &pipe=ID / &contactpipe=ID   DataPipe experiment IDs
 const params = new URLSearchParams(location.search);
 const DEV = params.has("dev");
-const devMinutes = DEV ? parseFloat(params.get("minutes")) : NaN;
-const REQUIRED_MS = (devMinutes > 0 ? devMinutes : ROUND_MINUTES) * 60000;
-const devPuzzles = DEV ? parseInt(params.get("puzzles"), 10) : NaN;
-const REQUIRED_ROUNDS = devPuzzles > 0 ? devPuzzles : REQUIRED_PUZZLES;
+const devNum = (k, d) => (DEV && params.has(k) && !Number.isNaN(parseFloat(params.get(k))) ? parseFloat(params.get(k)) : d);
+const NO_HINT = devNum("nohint", NO_HINT_SHARE);
+const DEPTH_SHARE = devNum("depth", START_DEPTH_SHARE);
+const REQUIRED = Math.round(devNum("puzzles", REQUIRED_PUZZLES));
+const FIXED_STAKES = devNum("stakes", null);
 const PIPE = {
   data: (DEV && params.get("pipe")) || DATAPIPE_DATA_ID,
   contact: (DEV && params.get("contactpipe")) || DATAPIPE_CONTACT_ID,
 };
 
 const $ = id => document.getElementById(id);
-const sideOf = opening => OPENINGS.find(([o]) => o === opening)[1];
+const fmtPts = x => (Math.round(x * 100) / 100).toString();
+const pts = x => `${fmtPts(x)} point${Math.abs(x) === 1 ? "" : "s"}`;
+const signedPts = x => `${x > 0 ? "+" : ""}${fmtPts(x)}`;
 
-// ---------------------------------------------------------------- session and log
-let session = null;
-let storageOk = true;
-let returnVisit = false;   // true from loading a saved session until the participant starts playing again
-
-const nowEpoch = () => performance.timeOrigin + performance.now();
-
+// ---------------------------------------------------------------- randomness
+function rand() { return crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32; }
+function pick(list) { return list[Math.floor(rand() * list.length)]; }
+function shuffled(list) {
+  const a = [...list];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 function randomCode() {
   const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
   return [...crypto.getRandomValues(new Uint32Array(6))].map(x => chars[x % chars.length]).join("");
 }
 
-function shuffled(list) {
-  const a = [...list];
-  const r = crypto.getRandomValues(new Uint32Array(a.length));
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = r[i] % (i + 1);
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
+// Balanced stakes: the list of stakes repeated to cover every puzzle, then shuffled, so a
+// participant gets 4 or 5 of each (and which puzzles are double is random).
+function assignStakes(order) {
+  if (FIXED_STAKES !== null) return Object.fromEntries(order.map(o => [o, FIXED_STAKES]));
+  const pool = shuffled(STAKES);
+  const list = shuffled(order.map((_, i) => pool[i % pool.length]));
+  return Object.fromEntries(order.map((o, i) => [o, list[i]]));
 }
 
+// ---------------------------------------------------------------- session and log
+let session = null;
+let storageOk = true;
+let returnVisit = false;
+const nowEpoch = () => performance.timeOrigin + performance.now();
+
 function newSession() {
-  const devOrder = DEV && params.get("order") ? params.get("order").split(",").map(Number) : null;
+  const order = DEV && params.get("order") ? params.get("order").split(",").map(Number) : [...ORDER];
   return {
-    format: "blokus-experiment-log", version: 1, app: APP_VERSION,
+    format: "blokus-hints-log", version: 1, app: APP_VERSION,
     participant: randomCode(),
     started: new Date().toISOString(),
     startEpoch: nowEpoch(),
     userAgent: navigator.userAgent,
     screen: { width: screen.width, height: screen.height, pixelRatio: devicePixelRatio },
-    touchScreen: matchMedia("(hover: none) and (pointer: coarse)").matches,   // phone or tablet without a mouse
+    touchScreen: matchMedia("(hover: none) and (pointer: coarse)").matches,
     maxTouchPoints: navigator.maxTouchPoints || 0,
     timezoneOffsetMinutes: new Date().getTimezoneOffset(),
-    requiredMinutes: REQUIRED_MS / 60000,
-    requiredPuzzles: REQUIRED_ROUNDS,
-    order: devOrder || shuffled(OPENINGS.map(([o]) => o)),
-    consent: null,            // {version, prizeEntered} once agreed; the email itself is never stored here
+    settings: { hintPrices: HINT_PRICES, fullFactor: FULL_FACTOR, noHintShare: NO_HINT, stakes: STAKES, startDepthShare: DEPTH_SHARE },
+    order,
+    requiredPuzzles: Math.min(REQUIRED, order.length),
+    stakes: assignStakes(order),
+    midGame: Object.fromEntries(order.map(o => [o, rand() < DEPTH_SHARE])),
+    consent: null,
     practiceDone: false,
-    round: 0,                 // index into order of the current or next round
-    active: null,             // the round in progress, if any
-    results: [],              // one entry per finished round
+    quizPassed: false,
+    round: 0,                // puzzles finished
+    active: null,            // the puzzle in progress
+    results: [],             // one entry per finished puzzle
+    bonusDraw: null,
     finished: false,
     finalSent: false,
-    sentThrough: 0,           // number of finished rounds included in the last successful upload
+    sentThrough: 0,
     uploads: 0,
     events: [],
   };
 }
 
-// t: milliseconds since the session started (continues across page reloads)
 function record(type, data = {}) {
   session.events.push({ t: Math.round((nowEpoch() - session.startEpoch) * 10) / 10, type, ...data });
   save();
@@ -112,7 +153,7 @@ function save() {
 function load() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (saved && saved.format === "blokus-experiment-log") return saved;
+    if (saved && saved.format === "blokus-hints-log") return saved;
   } catch (e) { /* nothing saved, or storage blocked */ }
   return null;
 }
@@ -128,8 +169,6 @@ function download() {
 }
 
 // ---------------------------------------------------------------- sending data to DataPipe
-// leaving: the page is being hidden or closed, so ask the browser to finish the request
-// anyway (browsers only allow this for small requests, under about 64 KB).
 async function sendToDataPipe(experimentID, filename, text, leaving = false) {
   try {
     const body = JSON.stringify({ experimentID, filename, data: text });
@@ -145,8 +184,6 @@ async function sendToDataPipe(experimentID, filename, text, leaving = false) {
   }
 }
 
-// Sends the whole log so far as a new file (DataPipe needs a new file name each time).
-// The latest file for a participant contains everything in the earlier ones.
 async function uploadLog(label, leaving = false) {
   if (!PIPE.data) return false;
   session.uploads++;
@@ -159,8 +196,6 @@ async function uploadLog(label, leaving = false) {
   return res.ok;
 }
 
-// Sends the log, trying three times, and reports progress in statusEl. If it cannot be sent
-// (or DataPipe is not set up yet), fallbackEl is shown, asking the participant to download the file.
 async function sendWithStatus(label, statusEl, fallbackEl) {
   fallbackEl.hidden = true;
   if (!PIPE.data) return fallback();
@@ -180,36 +215,26 @@ async function sendWithStatus(label, statusEl, fallbackEl) {
   }
 }
 
-// When the page is hidden or closed partway through, send what has been played so far,
-// so games from an unfinished puzzle are not lost if the participant never comes back.
-// At most once a minute, and only if something new has happened since the last upload.
 let lastLeaveUpload = 0;
 function uploadOnLeave() {
   if (!PIPE.data || !session || !session.consent || session.finished) return;
   const now = Date.now();
   if (now - lastLeaveUpload < 60000) return;
-  const fresh = session.events.length - (session.eventsAtUpload || 0);
-  if (fresh < 5) return;
+  if (session.events.length - (session.eventsAtUpload || 0) < 5) return;
   lastLeaveUpload = now;
-  if (session.active) tick();
   uploadLog("pause", true);
 }
 
-// The prize email is kept in its own browser storage entry (never in the game log) until it
-// has been sent; if the browser cannot store it, it is held in memory instead.
 let pendingContact = null;
 function loadContact() {
   try { return JSON.parse(localStorage.getItem(CONTACT_KEY)) || pendingContact; } catch (e) { return pendingContact; }
 }
-
-// Sends the prize email (if any, and not yet sent) to its own DataPipe experiment, then deletes it from the browser.
 let contactSending = false;
 async function sendContact() {
   const contact = loadContact();
   if (!contact || !PIPE.contact || contactSending) return;
   contactSending = true;
-  const filename = `${contact.participant}_contact_${Date.now()}.json`;
-  const res = await sendToDataPipe(PIPE.contact, filename, JSON.stringify(contact));
+  const res = await sendToDataPipe(PIPE.contact, `${contact.participant}_contact_${Date.now()}.json`, JSON.stringify(contact));
   contactSending = false;
   record(res.ok ? "contact_sent" : "contact_failed", { status: res.status, error: res.error || null });
   if (res.ok) {
@@ -219,8 +244,9 @@ async function sendContact() {
 }
 
 // ---------------------------------------------------------------- screens
+const SCREENS = ["consent", "menu", "rules", "intro", "play", "thanks", "done"];
 function show(name) {
-  for (const id of ["consent", "menu", "rules", "play", "thanks", "done"]) $(id).hidden = id !== name;
+  for (const id of SCREENS) $(id).hidden = id !== name;
   record("screen", { name });
   window.scrollTo(0, 0);
 }
@@ -234,39 +260,57 @@ function progressBoxes(el, current) {
   }));
 }
 
+const total = () => session.order.length;
+const required = () => Math.min(session.requiredPuzzles, total());
+const stakesOf = opening => session.stakes[opening] ?? 1;
+
+function stakesText(s) {
+  return s === 1 ? "Normal stakes: your result counts once."
+    : `Stakes x${s}: your result counts ${s === 2 ? "double" : `${s} times`} (a win by 1 gives ${s} points, a loss by 2 gives -${2 * s}). Hints cost the same as usual.`;
+}
+
+// The menu decides what comes next.
 function showMenu() {
-  const n = session.round + 1;
-  const required = Math.min(session.requiredPuzzles || REQUIRED_ROUNDS, session.order.length);
-  // once the required puzzles are done, the thank-you screen takes the place of the menu
-  if (session.practiceDone && !session.active && session.round >= required) return showThanks();
-  let lead, start;
+  if (session.finished) return showDone();
+  if (!session.consent) return show("consent");
+  const a = session.active;
+  if (session.practiceDone && session.quizPassed && !a && session.round >= required()) return showThanks();
+  let lead, start, extra = "";
   if (!session.practiceDone) {
-    lead = "Start with a practice game to learn the controls. It does not count.";
+    lead = "Start with a practice game to learn the controls. It does not count, and there are no hints in it.";
     start = "Start practice game";
-  } else if (session.active) {
-    lead = (returnVisit ? "Welcome back. " : "") + `Puzzle ${n} was interrupted. You can carry on with the time you had left.`;
-    start = `Continue puzzle ${n}`;
-  } else if (n === 1) {
-    lead = required === 1
-      ? `Practice done. Now the puzzle: you have ${ROUND_MINUTES} minutes, and can play it as many times as you like.`
-      : `Practice done. There are ${required} puzzles, ${ROUND_MINUTES} minutes each.`;
-    start = required === 1 ? "Start the puzzle" : "Start puzzle 1";
+  } else if (!session.quizPassed) {
+    lead = "Practice done. Next: how hints and points work.";
+    start = "How the puzzles work";
+  } else if (a) {
+    lead = (returnVisit ? "Welcome back. " : "") + `Puzzle ${a.index + 1} was interrupted. It carries on exactly where you left it.`;
+    start = `Continue puzzle ${a.index + 1}`;
   } else {
-    lead = `Puzzle ${n - 1} finished. ${required - n + 1} to go.`;
+    const n = session.round + 1;
+    lead = n === 1 ? `There are ${required()} puzzles to play, and you can do more afterwards if you like. You play each puzzle once.`
+      : `Puzzle ${n - 1} finished. ${required() - n + 1} to go.`;
     start = `Start puzzle ${n}`;
+    extra = stakesText(stakesOf(session.order[session.round]));
   }
   $("menuLead").textContent = lead;
+  $("menuStakes").textContent = extra;
+  $("menuStakes").hidden = !extra;
   $("startBtn").textContent = start;
   $("menuLater").textContent = "You don't have to do everything in one sitting. Your progress is saved in this browser, "
-    + "so you can stop after any puzzle, or partway through one, and come back later on this device to carry on.";
-  $("progress").hidden = session.round === 0 && !session.active;
-  progressBoxes($("progress"), session.practiceDone);
+    + "so you can stop and come back later on this device to carry on.";
+  $("progress").hidden = !session.quizPassed;
+  progressBoxes($("progress"), true);
   show("menu");
-  if (session.practiceDone) loadTable(session.order[session.round]).catch(() => {});   // download ahead
+  if (session.quizPassed && session.round < total()) loadTable(session.order[session.round]).catch(() => {});
+}
+
+function startFromMenu() {
+  if (!session.practiceDone) return startPractice();
+  if (!session.quizPassed) return showQuiz();
+  startRound();
 }
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 function checkConsentForm() {
   const ticked = ["consentRead", "consentAge", "consentAgree"].every(id => $(id).checked);
   const noPrize = $("noPrize").checked;
@@ -274,7 +318,7 @@ function checkConsentForm() {
   $("prizeEmail").disabled = noPrize;
   let hint = "";
   if (!ticked) hint = "Please tick all three consent boxes to continue.";
-  else if (!noPrize && !email) hint = "Enter an email address to enter for a prize, or tick the box if you don't want to.";
+  else if (!noPrize && !email) hint = "Enter an email address to be paid, or tick the box if you don't want to be.";
   else if (!noPrize && !EMAIL_PATTERN.test(email)) hint = "That email address doesn't look right.";
   $("consentHint").textContent = hint;
   $("consentBtn").disabled = hint !== "";
@@ -297,14 +341,71 @@ function submitConsent() {
   showMenu();
 }
 
-function startFromMenu() {
-  if (!session.practiceDone) startPractice();
-  else startRound();
-}
-
 function fillRules() {
   const text = $("rulesText").content;
   for (const body of document.querySelectorAll(".rules-body")) body.replaceChildren(text.cloneNode(true));
+}
+
+// ---------------------------------------------------------------- comprehension check
+const QUIZ = [
+  { q: "You buy one hint for 0.5 points, then win the puzzle by 1 at normal stakes. How many points do you get for that puzzle?",
+    options: ["1.5", "1", "0.5", "0"], answer: 2, why: "Your margin (+1) minus the hint (0.5) is 0.5." },
+  { q: "Same again, but the puzzle is at stakes x2. How many points?",
+    options: ["1.5", "1", "0.5", "2"], answer: 0, why: "The result counts double (+2), hints cost the same (0.5): 1.5." },
+  { q: "What is the best result possible in every puzzle?",
+    options: ["A win by 1", "A win by 5", "A draw"], answer: 0, why: "Perfect play wins by exactly 1 in every puzzle." },
+  { q: "Can a hint ever point you to a move that makes your result worse?",
+    options: ["Yes, sometimes", "No, a hint always shows a move that keeps the best result still possible"], answer: 1,
+    why: "Hints come from the perfect computer, so they are never wrong." },
+  { q: "How many times do you play each puzzle?",
+    options: ["Once", "As many times as I like"], answer: 0, why: "Each puzzle is a single game." },
+];
+
+function showQuiz() {
+  $("quiz").replaceChildren(...QUIZ.map((item, i) => {
+    const d = document.createElement("div");
+    d.className = "q";
+    d.id = `q_${i}`;
+    const p = document.createElement("p");
+    p.className = "q-text";
+    p.textContent = `${i + 1}. ${item.q}`;
+    d.appendChild(p);
+    item.options.forEach((opt, j) => {
+      const l = document.createElement("label");
+      const r = document.createElement("input");
+      r.type = "radio"; r.name = `q_${i}`; r.value = j;
+      l.append(r, document.createTextNode(opt));
+      d.appendChild(l);
+    });
+    const why = document.createElement("p");
+    why.className = "q-why"; why.hidden = true;
+    d.appendChild(why);
+    return d;
+  }));
+  $("quizHint").textContent = "";
+  show("intro");
+}
+
+function checkQuiz() {
+  const answers = QUIZ.map((_, i) => {
+    const r = document.querySelector(`input[name="q_${i}"]:checked`);
+    return r ? Number(r.value) : null;
+  });
+  if (answers.includes(null)) { $("quizHint").textContent = "Please answer every question."; return; }
+  let allRight = true;
+  QUIZ.forEach((item, i) => {
+    const d = $(`q_${i}`), why = d.querySelector(".q-why");
+    const right = answers[i] === item.answer;
+    allRight = allRight && right;
+    d.className = "q " + (right ? "right" : "wrong");
+    why.hidden = false;
+    why.textContent = right ? "Correct." : "Not quite. " + item.why + " Please change your answer.";
+  });
+  record("quiz", { answers, passed: allRight });
+  if (!allRight) { $("quizHint").textContent = "Some answers need another look."; return; }
+  session.quizPassed = true;
+  save();
+  showMenu();
 }
 
 // ---------------------------------------------------------------- opponent tables
@@ -313,36 +414,85 @@ let manifest = null;
 function loadTable(opening) {
   if (!tables[opening]) {
     tables[opening] = (async () => {
-      if (!manifest) manifest = await (await fetch("opponent_web/manifest.json")).json();
+      if (!manifest) manifest = await (await fetch(DATA_DIR + "manifest.json")).json();
       const info = manifest.openings[String(opening)];
-      const table = await loadReplyTable(info.parts ? info.parts.map(f => "opponent_web/" + f) : "opponent_web/" + info.file);
-      table.startValue = info.startValue ?? null;          // Blue minus Yellow, from the export
+      const table = await loadReplyTable(info.parts ? info.parts.map(f => DATA_DIR + f) : DATA_DIR + info.file);
+      if (!table.values) throw new Error("This version needs opponent files with position values (version 2).");
       return table;
     })();
-    tables[opening].catch(() => delete tables[opening]);     // allow a retry after a failed download
+    tables[opening].catch(() => delete tables[opening]);
   }
   return tables[opening];
 }
 
-// ---------------------------------------------------------------- rounds and timer
-let game = null;        // the game on screen
-let selected = null;    // piece being placed: {piece, shape}
-let hover = null;       // [row, col] under the mouse
-let clockTimer = null;
-let lastTick = 0;
-let lastSave = 0;
+// Start position for a mid-game puzzle: both sides play perfect moves (the hinted move for
+// the participant, the stored reply for the computer) until the participant has made
+// `extra` moves beyond the opening and it is their turn again.
+function midGameMoves(opening, side, table) {
+  const extra = START_EXTRA_MOVES[opening] ?? START_EXTRA_MOVES.default;
+  const s = openingState(SMALL, opening);
+  const moves = [];
+  let made = 0;
+  while (!s.gameOver) {
+    let a;
+    if (s.current === side) {
+      if (made === extra) break;
+      a = decisionInfo(s, table, side).move;
+      made++;
+    } else {
+      a = table.lookup(positionKey(s)).reply;
+    }
+    s.play(a);
+    moves.push(a);
+  }
+  return moves;
+}
+
+// ---------------------------------------------------------------- game on screen
+let game = null;        // {kind: "practice" | "round", state, human, table, info, ...}
+let selected = null;
+let hover = null;
 
 function startPractice() {
-  game = {
-    kind: "practice", opening: null, human: 0, table: null,
-    attempt: 0, best: null, round: null,
-  };
+  game = { kind: "practice", opening: null, human: 0, table: null, attempt: 0 };
   record("practice_start");
   enterPlay();
+  newPracticeGame();
+}
+
+function newPracticeGame() {
+  game.attempt++;
+  game.token = Symbol();
+  game.state = new GameState(SMALL, 2);
+  game.over = false; game.busy = false; game.lastComputer = null; game.roundResult = null;
+  selected = null;
+  record("attempt_start", { kind: "practice", attempt: game.attempt });
+  render();
+}
+
+function endPractice() {
+  game.token = null;
+  session.practiceDone = true;
+  record("practice_end", { attempts: game.attempt });
+  game = null; selected = null;
+  showMenu();
+}
+
+function rebuildState(a) {
+  const s = openingState(SMALL, a.opening);
+  for (const m of a.startMoves || []) s.play(m);
+  for (const m of a.moves) s.play(m);
+  return s;
+}
+
+function lastComputerMove(state, human) {
+  for (let i = state.history.length - 1; i >= 0; i--) if (state.history[i][0] !== human) return state.history[i][1];
+  return null;
 }
 
 async function startRound(btn = $("startBtn"), messageEl = $("menuLead")) {
-  const index = session.round;
+  const resumed = !!session.active;
+  const index = resumed ? session.active.index : session.round;
   const opening = session.order[index];
   const label = btn.textContent;
   btn.disabled = true;
@@ -352,145 +502,208 @@ async function startRound(btn = $("startBtn"), messageEl = $("menuLead")) {
     table = await loadTable(opening);
   } catch (e) {
     record("error", { problem: "could not download opponent", opening, message: String(e) });
-    btn.disabled = false;
     messageEl.textContent = "The puzzle could not be downloaded. Please check your internet connection and try again.";
+    return;
+  } finally {
+    btn.disabled = false;
     btn.textContent = label;
-    return;
   }
-  btn.disabled = false;
-  btn.textContent = label;
-  const resumed = !!session.active;
+  const side = SIDES[opening];
   if (!resumed) {
-    session.active = { index, opening, elapsedMs: 0, minimumReached: false, attempts: 0, best: null,
-      lastScore: null, bestScore: null, attemptOpen: false };
+    const mid = !!session.midGame[opening];
+    session.active = {
+      index, opening, side: COLOUR[side], stakes: stakesOf(opening), midGame: mid,
+      startMoves: mid ? midGameMoves(opening, side, table) : [],
+      moves: [],          // every move since the start position, both sides
+      decisions: [],      // one entry per participant decision, filled in when the move is made
+      pending: null,      // the decision on screen: price drawn and hints bought so far
+      hintCost: 0,
+    };
   }
   const a = session.active;
-  record("round_start", { round: index + 1, opening, side: COLOUR[sideOf(opening)], resumed, elapsedMs: Math.round(a.elapsedMs), requiredMs: REQUIRED_MS });
-  game = { kind: "round", opening, human: sideOf(opening), table, attempt: a.attempts, best: a.best, round: index + 1,
-    lastScore: a.lastScore ?? null, bestScore: a.bestScore ?? null };
+  record("round_start", { round: index + 1, opening, side: a.side, stakes: a.stakes, resumed, midGame: a.midGame, startMoves: a.startMoves });
+  game = { kind: "round", opening, human: side, table, attempt: 1, roundResult: null };
+  game.state = rebuildState(a);
+  game.token = Symbol();
+  game.over = false; game.busy = false;
+  game.lastComputer = lastComputerMove(game.state, side);
+  if (!a.moves.length && !a.startMoves.length) game.lastComputer = null;
+  selected = null;
   enterPlay();
+  afterMove();
 }
 
-function enterPlay() {
-  returnVisit = false;
-  $("play").className = `me-${game.human}`;
-  show("play");
-  newAttempt();
-  if (game.kind === "round") {
-    lastTick = performance.now();
-    clearInterval(clockTimer);
-    clockTimer = setInterval(tick, 250);
-  }
-  updateClock();
+// ---------------------------------------------------------------- moves
+const myTurn = () => game && !game.over && !game.busy && game.state.current === game.human;
+
+// After every move and at the start: end the game, hand over to the computer, or set up
+// the participant's decision.
+function afterMove() {
+  const s = game.state;
+  if (s.gameOver) return finishGame();
+  if (s.current !== game.human) return computerTurn();
+  if (game.kind === "round") prepareDecision();
+  render();
 }
 
-// Runs four times a second during a round. Time counts whenever the round is on screen,
-// including when the participant switches to another tab (that is logged separately).
-function tick() {
-  const a = session.active;
-  if (!a || !game || game.kind !== "round") return;
-  const now = performance.now();
-  a.elapsedMs += now - lastTick;
-  lastTick = now;
-  if (!a.minimumReached && a.elapsedMs >= REQUIRED_MS) {
-    a.minimumReached = true;
-    record("minimum_reached", { round: a.index + 1, opening: a.opening });
-  }
-  if (now - lastSave > 1000) { lastSave = now; save(); }
-  updateClock();
-}
-
-function fmt(ms) {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
-
-function updateClock() {
-  const isRound = game && game.kind === "round";
-  const a = session.active;
-  $("clock").className = "";
-  if (!isRound) {
-    $("clock").textContent = "Practice";
-    $("timeup").hidden = true;
+// Works out every legal move's exact value and draws the hint price once per decision
+// (kept in session.active.pending, so a reload shows the same price and hints already bought).
+function prepareDecision() {
+  const a = session.active, s = game.state;
+  const ply = s.history.length + 1;
+  const info = decisionInfo(s, game.table, game.human);
+  game.info = info;
+  if (!info) {
+    record("error", { problem: "missing position value", opening: a.opening, moves: s.history.map(h => h[1]) });
+    a.pending = { ply, noHints: true, price: null, bought: [], missing: true };
     return;
   }
-  if (!a.minimumReached) {
-    $("clock").textContent = `${fmt(REQUIRED_MS - a.elapsedMs + 999)} left`;
-    $("timeup").hidden = true;
-  } else {
-    $("clock").textContent = `Extra time ${fmt(a.elapsedMs - REQUIRED_MS)}`;
-    $("clock").className = "extra";
-    const last = session.round + 1 === session.order.length;
-    const moreRequired = session.round + 1 < (session.requiredPuzzles || REQUIRED_ROUNDS);
-    $("timeupText").textContent = `${ROUND_MINUTES} minutes are up. You can ${moreRequired ? "move on" : "finish this puzzle"} now, or keep playing it for as long as you like.`;
-    $("nextBtn").textContent = last ? "Finish" : moreRequired ? "Next puzzle" : "Finish this puzzle";
-    $("timeup").hidden = false;
+  if (!a.pending || a.pending.ply !== ply) {
+    const noHints = rand() < NO_HINT;
+    a.pending = { ply, noHints, price: noHints ? null : pick(HINT_PRICES), bought: [], shownAt: Math.round(nowEpoch() - session.startEpoch) };
+    record("decision", {
+      round: a.index + 1, opening: a.opening, stakes: a.stakes, ply, noHints, price: a.pending.price,
+      legal: info.legal, good: info.good, best: info.best, hintMove: info.move, hintPiece: info.piece, hintCorner: info.corner,
+      values: [...info.values.entries()],
+    });
   }
 }
 
-function endRound() {
+const hintPrice = kind => (kind === "full" ? FULL_FACTOR : 1) * session.active.pending.price;
+const boughtKinds = () => (game && game.kind === "round" && session.active && session.active.pending ? session.active.pending.bought.map(b => b.kind) : []);
+
+function buyHint(kind) {
+  if (!myTurn() || game.kind !== "round") return;
+  const a = session.active, d = a.pending;
+  if (!d || d.noHints || !game.info) return;
+  const have = boughtKinds();
+  if (have.includes(kind) || have.includes("full")) return;
+  const cost = hintPrice(kind);
+  d.bought.push({ kind, cost, t: Math.round(nowEpoch() - session.startEpoch) });
+  a.hintCost += cost;
+  record("hint_buy", { round: a.index + 1, opening: a.opening, ply: d.ply, kind, price: d.price, cost, totalHintCost: a.hintCost });
+  render();
+}
+
+function computerTurn() {
+  game.busy = true;
+  render();
+  const token = game.token;
+  const step = () => {
+    if (!game || game.token !== token) return;
+    const state = game.state;
+    let reply;
+    if (game.kind === "practice") {
+      const legal = state.legalActions();
+      reply = legal[Math.floor(Math.random() * legal.length)];
+    } else {
+      const entry = game.table.lookup(positionKey(state));
+      reply = entry ? entry.reply : null;
+    }
+    if (reply === null || !state.isLegal(reply)) {
+      record("error", { problem: "no stored reply", opening: game.opening, moves: state.history.map(h => h[1]) });
+      setStatus("Something went wrong: the computer has no stored move here.");
+      return;
+    }
+    const player = state.current;
+    state.play(reply);
+    game.lastComputer = reply;
+    if (game.kind === "round") session.active.moves.push(reply);
+    record("move", { by: "computer", player, action: reply });
+    game.busy = false;
+    if (!state.gameOver && state.current !== game.human) {   // participant is out: computer moves again
+      game.busy = true;
+      render();
+      setTimeout(step, COMPUTER_DELAY_MS);
+      return;
+    }
+    afterMove();
+  };
+  setTimeout(step, COMPUTER_DELAY_MS);
+}
+
+function participantMove(action, piece, orientation) {
+  const state = game.state;
+  const ply = state.history.length + 1;
+  const info = game.info;
+  const value = info ? info.values.get(action) : null;
+  const cost = info ? info.best - value : null;
+  record("move", { by: "participant", player: state.current, action, piece, orientation, input: inputKind, ply, value, cost });
+  const a = session.active, d = a.pending || { ply, noHints: true, price: null, bought: [] };
+  a.decisions.push({
+    ply, noHints: d.noHints, price: d.price, bought: d.bought.map(b => b.kind), hintCost: d.bought.reduce((t, b) => t + b.cost, 0),
+    legal: info ? info.legal : null, good: info ? info.good : null, best: info ? info.best : null,
+    hintMove: info ? info.move : null, chosen: action, value, cost,
+    followedFull: d.bought.some(b => b.kind === "full") ? action === info.move : null,
+    thinkMs: d.shownAt != null ? Math.round(nowEpoch() - session.startEpoch - d.shownAt) : null,
+  });
+  a.pending = null;
+  a.moves.push(action);
+  state.play(action);
+  game.info = null;
+  selected = null;
+  if (inputKind !== "mouse") hover = null;
+  save();
+  afterMove();
+}
+
+function finishGame() {
+  const s = game.state;
+  const sc = s.scores();
+  const margin = sc[game.human] - sc[1 - game.human];
+  game.over = true; game.busy = false;
+  if (game.kind === "practice") {
+    record("attempt_end", { kind: "practice", attempt: game.attempt, scores: sc, margin });
+    return render();
+  }
   const a = session.active;
-  if (!a || !a.minimumReached) return;
-  clearInterval(clockTimer);
-  if (a.attemptOpen) abandonAttempt("moved on");
-  game.token = null;                                // stops any pending computer move
   const result = {
-    round: a.index + 1, opening: a.opening, side: COLOUR[sideOf(a.opening)],
-    attempts: a.attempts, best: a.best,
-    timeMs: Math.round(a.elapsedMs), extraTimeMs: Math.round(a.elapsedMs - REQUIRED_MS),
+    round: a.index + 1, opening: a.opening, side: a.side, stakes: a.stakes, midGame: a.midGame, startMoves: a.startMoves,
+    margin, hintCost: a.hintCost, points: a.stakes * margin - a.hintCost, moves: a.moves, decisions: a.decisions,
   };
   session.results.push(result);
   session.active = null;
   session.round++;
   record("round_end", result);
-  game = null;
-  selected = null;
+  game.roundResult = result;
+  render();
+  uploadLog(`round${result.round}`);
   sendContact();
-  if (session.round >= session.order.length) {
-    finishSession(false);
-  } else if (session.round >= (session.requiredPuzzles || REQUIRED_ROUNDS)) {
-    showThanks(`round${result.round}`);
-  } else {
-    uploadLog(`round${result.round}`);
-    showMenu();
-  }
 }
 
-function finishSession(early) {
-  session.finished = true;
-  record("session_finished", { puzzles: session.round, early });
-  showDone();
+// "Next" after a puzzle: the menu for the next required puzzle, or the thank-you screen.
+function afterRound() {
+  game = null; selected = null;
+  if (session.round >= total()) return finishSession(false);
+  showMenu();
 }
 
-// Thank-you screen once the required puzzles are done: the results are sent, and the
-// participant can stop or carry on with more puzzles, up to all nine.
-function showThanks(uploadLabel = null) {
-  const played = session.round, total = session.order.length, left = total - played;
+// ---------------------------------------------------------------- thanks, finish, payment draw
+function showThanks() {
+  const played = session.round, left = total() - played;
   const back = returnVisit;
   show("thanks");
   record("thanks_shown", { puzzles: played, returning: back });
-  $("thanksTitle").textContent = back ? "Welcome back" : played === 1 ? "Thank you for taking part" : `Puzzle ${played} done`;
+  $("thanksTitle").textContent = back ? "Welcome back" : played === required() ? "Thank you for taking part" : `Puzzle ${played} done`;
   $("thanksLead").textContent = back ? "Thank you for coming back. You can carry on from your next puzzle."
-    : played === 1 ? "You have finished your first puzzle. Thank you!" : "Thank you, that really helps.";
+    : played === required() ? "You have finished the required puzzles. Thank you!" : "Thank you, that really helps.";
   progressBoxes($("thanksProgress"), false);
-  $("thanksCount").textContent = `${played} of ${total} puzzles done`;
+  $("thanksCount").textContent = `${played} of ${total()} puzzles done`;
   $("thanksMoreTitle").textContent = "Can you do more?";
-  $("thanksMore").textContent = "Every puzzle you play makes the study more useful, so "
-    + (left === 1 ? `please play the last puzzle if you can (${ROUND_MINUTES} minutes).`
-                  : `please play as many of the remaining ${left} puzzles as you can (${ROUND_MINUTES} minutes each).`)
-    + (session.consent && session.consent.prizeEntered ? " Every puzzle has its own prize, so each one you play is another chance to win." : "");
-  $("thanksLater").textContent = (left === 1 ? "You don't have to do it now." : "You don't have to do them all now.") + " Your progress is saved in this browser, so you can "
-    + "take a break and come back later, as many times as you like, and carry on from your next puzzle.";
+  $("thanksMore").textContent = "Each puzzle is a single game of a few minutes, and every one makes the study more useful, so "
+    + (left === 1 ? "please play the last one if you can." : `please play as many of the remaining ${left} as you can.`)
+    + " Every puzzle you finish could be the one picked for your payment.";
+  $("thanksStakes").textContent = stakesText(stakesOf(session.order[session.round]));
+  $("thanksLater").textContent = "You don't have to do them now. Your progress is saved in this browser, so you can take a break and come back later.";
   $("moreBtn").textContent = "Play the next puzzle";
   $("breakBtn").hidden = false;
   $("breakNote").hidden = true;
-  $("thanksCode").innerHTML = `Your participant code is <span class="code">${session.participant}</span>. ` +
-    "Keep it if you might want your data removed later.";
-  if (!uploadLabel && (session.sentThrough || 0) >= played) {
+  $("thanksCode").innerHTML = `Your participant code is <span class="code">${session.participant}</span>. Keep it if you might want your data removed later.`;
+  if ((session.sentThrough || 0) >= played) {
     $("thanksStatus").textContent = "Your results have been sent.";
     $("thanksFallback").hidden = true;
   } else {
-    sendWithStatus(uploadLabel || `round${played}`, $("thanksStatus"), $("thanksFallback"));
+    sendWithStatus(`round${played}`, $("thanksStatus"), $("thanksFallback"));
   }
 }
 
@@ -501,18 +714,29 @@ function takeBreak() {
   $("breakLink").href = url;
   $("breakBtn").hidden = true;
   $("breakNote").hidden = false;
-  $("breakNote").scrollIntoView({ behavior: "smooth", block: "center" });
 }
 
-// Finish screen: sends the final log, trying three times; if that fails, or DataPipe is
-// not set up yet, the participant is asked to download the file and email it.
+// One finished puzzle is drawn at random to decide payment.
+function finishSession(early) {
+  if (!session.bonusDraw && session.results.length) {
+    const i = Math.floor(rand() * session.results.length);
+    const r = session.results[i];
+    session.bonusDraw = { resultIndex: i, round: r.round, opening: r.opening, points: r.points };
+    record("bonus_draw", session.bonusDraw);
+  }
+  session.finished = true;
+  record("session_finished", { puzzles: session.round, early });
+  showDone();
+}
+
 async function showDone() {
   show("done");
-  const played = session.round, total = session.order.length;
-  $("doneLead").textContent = (played >= total ? `You have finished all ${total} puzzles.`
-    : played === 1 ? "You played 1 puzzle." : `You played ${played} puzzles.`) + " Thank you for taking part.";
-  $("doneCode").innerHTML = `Your participant code is <span class="code">${session.participant}</span>. ` +
-    "Keep it if you might want your data removed later.";
+  const n = session.round;
+  $("doneLead").textContent = (n >= total() ? `You have finished all ${total()} puzzles.` : `You played ${n} puzzle${n === 1 ? "" : "s"}.`) + " Thank you for taking part.";
+  const b = session.bonusDraw;
+  $("doneBonus").hidden = !b;
+  if (b) $("doneBonus").textContent = `The puzzle picked for your payment: puzzle ${b.round}, with ${pts(b.points)}.`;
+  $("doneCode").innerHTML = `Your participant code is <span class="code">${session.participant}</span>. Keep it if you might want your data removed later.`;
   $("doneFallback").hidden = true;
   if (session.finalSent) {
     $("doneStatus").textContent = "Your results have been sent. You can close this page.";
@@ -525,145 +749,12 @@ async function showDone() {
   }
 }
 
-function endPractice() {
-  if (game.attemptOpen) abandonAttempt("left practice");
-  game.token = null;
-  session.practiceDone = true;
-  record("practice_end", { attempts: game.attempt });
-  game = null;
-  selected = null;
-  showMenu();
-}
-
-// ---------------------------------------------------------------- one game
-function newAttempt() {
-  game.attempt++;
-  game.token = Symbol();
-  game.state = game.kind === "practice" ? new GameState(SMALL, 2) : openingState(SMALL, game.opening);
-  game.startMoves = game.state.history.length;
-  game.over = false;
-  game.busy = false;
-  game.lastComputer = null;
-  game.attemptOpen = true;
-  game.prevScore = game.lastScore ?? null;
-  // Rough per-game score (rounds only, needs a version 2 opponent file with values).
-  // value: best final margin still reachable, from the participant's side.
-  const start = game.kind === "round" && game.table.startValue != null
-    ? (game.human === 0 ? game.table.startValue : -game.table.startValue) : TARGET_MARGIN;
-  game.score = game.kind === "round" && game.table.values ? { value: start, pending: [], costs: [] } : null;
-  selected = null;
-  if (game.kind === "round") { session.active.attempts = game.attempt; session.active.attemptOpen = true; }
-  record("attempt_start", {
-    kind: game.kind, round: game.round, opening: game.opening, side: COLOUR[game.human], attempt: game.attempt,
-  });
-  render();
-  if (game.state.current !== game.human) computerTurn();
-}
-
-function abandonAttempt(reason) {
-  record("attempt_abandoned", {
-    kind: game ? game.kind : "round", reason,
-    moves: game && game.state ? game.state.history.slice(game.startMoves).map(h => h[1]) : null,
-  });
-  if (game) game.attemptOpen = false;
-  if (session.active) session.active.attemptOpen = false;
-}
-
-const myTurn = () => game && !game.over && !game.busy && game.state.current === game.human;
-
-// A participant move's cost is how much it lowers the best final margin still reachable
-// (both sides perfect from then on), so later consequences are included. Moves made in a
-// row because the computer is out are scored together once the next value is known.
-function settleMoves(value) {
-  const sc = game.score;
-  if (!sc) return;
-  const cost = Math.max(0, sc.value - value);
-  for (const _ of sc.pending) sc.costs.push(cost);
-  sc.pending = [];
-  sc.value = value;
-}
-
-// Score out of 100: each move scores 100 if perfect, otherwise 100 / (1 + points lost); averaged over the game.
-function gameScore() {
-  const costs = game.score ? game.score.costs : [];
-  if (!costs.length) return null;
-  return Math.round(100 * costs.reduce((t, c) => t + 1 / (1 + c), 0) / costs.length);
-}
-
-function computerMove(state) {
-  if (game.kind === "practice") {                    // practice opponent: a random legal move
-    const legal = state.legalActions();
-    return legal[Math.floor(Math.random() * legal.length)];
-  }
-  const entry = game.table.lookup(positionKey(state));
-  if (!entry) return null;
-  if (entry.value !== null) settleMoves(game.human === 0 ? entry.value : -entry.value);
-  return entry.reply;
-}
-
-function computerTurn() {
-  game.busy = true;
-  render();
-  const token = game.token;
-  const step = () => {
-    if (!game || game.token !== token) return;          // the attempt or round has ended
-    const state = game.state;
-    const reply = computerMove(state);
-    if (reply === null || !state.isLegal(reply)) {
-      record("error", { problem: "no stored reply", opening: game.opening, moves: state.history.map(h => h[1]) });
-      setStatus("Something went wrong: the computer has no stored move here.");
-      return;
-    }
-    const player = state.current;
-    state.play(reply);
-    game.lastComputer = reply;
-    record("move", { by: "computer", player, action: reply });
-    if (state.gameOver) return finishAttempt();
-    if (state.current !== game.human) {               // participant is out: computer moves again
-      render();
-      setTimeout(step, COMPUTER_DELAY_MS);
-      return;
-    }
-    game.busy = false;
-    render();
-  };
-  setTimeout(step, COMPUTER_DELAY_MS);
-}
-
-function finishAttempt() {
-  const s = game.state.scores();
-  const margin = s[game.human] - s[1 - game.human];
-  game.over = true;
-  game.busy = false;
-  game.attemptOpen = false;
-  if (game.best === null || margin > game.best) game.best = margin;
-  settleMoves(margin);
-  const score = gameScore();
-  if (score !== null) {
-    game.lastScore = score;
-    if (game.bestScore === null || score > game.bestScore) game.bestScore = score;
-  }
-  if (game.kind === "round") {
-    session.active.best = game.best;
-    session.active.lastScore = game.lastScore;
-    session.active.bestScore = game.bestScore;
-    session.active.attemptOpen = false;
-  }
-  record("attempt_end", {
-    kind: game.kind, round: game.round, opening: game.opening, attempt: game.attempt, scores: s, margin,
-    moves: game.state.history.slice(game.startMoves).map(h => h[1]),
-    score, moveCosts: game.score ? game.score.costs : null,
-  });
-  render();
-}
-
 // ---------------------------------------------------------------- choosing and placing
 function orientationIndex(piece, shape) {
   const id = shapeId(shape);
   return ORIENTATIONS[piece].findIndex(o => shapeId(o) === id);
 }
 
-// The cell of the shape that sits under the mouse: the one nearest the shape's centre.
 function anchorOf(shape) {
   const cr = shape.reduce((s, [r]) => s + r, 0) / shape.length;
   const cc = shape.reduce((s, [, c]) => s + c, 0) / shape.length;
@@ -688,7 +779,7 @@ function selectPiece(piece) {
   if (!game || game.over || !game.state.remaining[game.human].has(piece)) return;
   if (selected && selected.piece === piece) return deselect();
   selected = { piece, shape: ORIENTATIONS[piece][0].map(c => [...c]) };
-  if (inputKind !== "mouse") hover = null;           // on a touch screen the shadow appears where the board is next tapped
+  if (inputKind !== "mouse") hover = null;
   record("select", { piece, input: inputKind });
   render();
 }
@@ -718,15 +809,14 @@ function clickCell(r, c) {
     showMessage(p.action === null ? "That doesn't fit on the board." : "That piece can't go there.");
     return;
   }
-  const state = game.state;
-  record("move", { by: "participant", player: state.current, action: p.action, piece: selected.piece, orientation, input: inputKind });
-  state.play(p.action);
-  if (game.score) game.score.pending.push(p.action);
-  selected = null;
-  if (inputKind !== "mouse") hover = null;
-  if (state.gameOver) return finishAttempt();
-  if (state.current !== game.human) return computerTurn();
-  render();                                            // computer is out: participant moves again
+  if (game.kind === "practice") {
+    record("move", { by: "participant", player: game.state.current, action: p.action, piece: selected.piece, orientation, input: inputKind });
+    game.state.play(p.action);
+    selected = null;
+    if (inputKind !== "mouse") hover = null;
+    return afterMove();
+  }
+  participantMove(p.action, selected.piece, orientation);
 }
 
 let messageTimer = null;
@@ -736,7 +826,7 @@ function showMessage(text) {
   messageTimer = setTimeout(() => ($("message").textContent = ""), 1800);
 }
 
-// ---------------------------------------------------------------- drawing the game
+// ---------------------------------------------------------------- drawing
 function setStatus(text, cls = "") {
   $("status").textContent = text;
   $("status").className = cls;
@@ -748,7 +838,6 @@ function describeMargin(m) {
   return "drew";
 }
 
-// Squares where the participant could start a piece: corner-touching, and used by at least one legal move.
 function anchorCells(state, p) {
   const v = state.variant;
   let occupied = 0n;
@@ -786,12 +875,44 @@ function buildBoard() {
     for (let c = 0; c < 8; c++) {
       const d = document.createElement("div");
       d.className = "cell";
-      d.dataset.r = r;
-      d.dataset.c = c;
+      d.dataset.r = r; d.dataset.c = c;
       $("board").appendChild(d);
       boardCells.push(d);
     }
   }
+}
+
+function enterPlay() {
+  returnVisit = false;
+  $("play").className = `me-${game.human}`;
+  show("play");
+}
+
+function renderHints() {
+  const panel = $("hintPanel");
+  if (!game || game.kind !== "round" || game.over) { panel.hidden = true; return; }
+  panel.hidden = false;
+  const a = session.active, d = a.pending;
+  const spent = `Hints so far in this puzzle: ${pts(a.hintCost)}.`;
+  if (!myTurn() || !d) {
+    $("hintButtons").hidden = true;
+    $("hintNote").textContent = spent;
+    return;
+  }
+  if (d.noHints) {
+    $("hintButtons").hidden = true;
+    $("hintNote").textContent = (d.missing ? "Hints are not available for this move. " : "No hints on this move. ") + spent;
+    return;
+  }
+  $("hintButtons").hidden = false;
+  const have = boughtKinds(), full = have.includes("full");
+  for (const [kind, id] of [["piece", "hintPieceBtn"], ["corner", "hintCornerBtn"], ["full", "hintFullBtn"]]) {
+    const b = $(id);
+    const bought = have.includes(kind) || (full && kind !== "full");
+    b.disabled = bought;
+    b.querySelector(".price").textContent = bought ? "Bought" : pts(hintPrice(kind));
+  }
+  $("hintNote").textContent = spent;
 }
 
 function render() {
@@ -804,13 +925,22 @@ function render() {
     for (const [r, c] of p.cells) if (r >= 0 && r < 8 && c >= 0 && c < 8) ghost.set(r * 8 + c, p.legal);
   }
   const anchors = myTurn() ? anchorCells(state, me) : new Set();
-  const last = new Set(game.lastComputer === null ? [] : SMALL.actions[game.lastComputer].cells.map(([r, c]) => r * 8 + c));
+  const last = new Set(game.lastComputer == null ? [] : SMALL.actions[game.lastComputer].cells.map(([r, c]) => r * 8 + c));
+  // hints bought for this move
+  const have = myTurn() ? boughtKinds() : [];
+  const info = game.info;
+  const hintFull = !!info && have.includes("full");
+  const hintPiece = info && (hintFull || have.includes("piece")) ? info.piece : null;
+  const hintCorner = info && (hintFull || have.includes("corner")) ? info.corner : null;
+  const hintCells = new Set(hintFull ? SMALL.actions[info.move].cells.map(([r, c]) => r * 8 + c) : []);
   boardCells.forEach((d, i) => {
     const owner = grid[Math.floor(i / 8)][i % 8];
     let cls = "cell";
     if (owner !== null) cls += ` p${owner}`;
     if (ghost.has(i)) cls += ghost.get(i) ? " gl" : " gi";
     else if (owner === null && anchors.has(i)) cls += " anchor";
+    if (hintCells.has(i)) cls += " hm";
+    else if (i === hintCorner) cls += " hc";
     if (last.has(i)) cls += " last";
     if (d.className !== cls) d.className = cls;
   });
@@ -820,58 +950,62 @@ function render() {
   for (const piece of SMALL.pieces) {
     const used = !state.remaining[me].has(piece);
     const b = document.createElement("button");
-    b.className = "piece" + (selected && selected.piece === piece ? " selected" : "");
+    b.className = "piece" + (selected && selected.piece === piece ? " selected" : "") + (piece === hintPiece ? " hinted" : "");
     b.disabled = used || game.over;
-    b.setAttribute("aria-label", `Piece ${PIECES[piece][0]}`);
+    b.setAttribute("aria-label", `Piece ${PIECES[piece][0]}` + (piece === hintPiece ? " (hint)" : ""));
     b.appendChild(miniShape(selected && selected.piece === piece ? selected.shape : ORIENTATIONS[piece][0], me, used));
     b.addEventListener("click", () => selectPiece(piece));
     tray.appendChild(b);
   }
-  $("their").replaceChildren(...SMALL.pieces.map(piece =>
-    miniShape(ORIENTATIONS[piece][0], 1 - me, !state.remaining[1 - me].has(piece))));
+  $("their").replaceChildren(...SMALL.pieces.map(piece => miniShape(ORIENTATIONS[piece][0], 1 - me, !state.remaining[1 - me].has(piece))));
 
-  $("roundInfo").textContent = game.kind === "practice"
-    ? `Practice game: you are ${COLOUR[me]}. The computer here plays randomly.`
-    : game.round <= (session.requiredPuzzles || REQUIRED_ROUNDS) && (session.requiredPuzzles || REQUIRED_ROUNDS) === 1
-      ? `Puzzle: you are ${COLOUR[me]}`
-      : `Puzzle ${game.round} of ${session.order.length}: you are ${COLOUR[me]}`;
-  $("attemptInfo").textContent = `Attempt ${game.attempt}`;
-  $("bestInfo").textContent = game.best === null ? "" : `Best result: ${describeMargin(game.best)}`
-    + (game.bestScore == null ? "" : `, best score ${game.bestScore}`);
-  if (game.over) setStatus("Game over");
+  if (game.kind === "practice") {
+    $("roundInfo").textContent = `Practice game: you are ${COLOUR[me]}. The computer here plays randomly.`;
+    $("stakesInfo").textContent = "Practice";
+    $("hintSpent").textContent = "";
+  } else {
+    const r = game.roundResult, a = session.active;
+    const round = r ? r.round : a.index + 1, stakes = r ? r.stakes : a.stakes;
+    $("roundInfo").textContent = `Puzzle ${round} of ${total()}: you are ${COLOUR[me]}` + ((r ? r.midGame : a.midGame) ? " (starts mid-game)" : "");
+    $("stakesInfo").textContent = stakes === 1 ? "Normal stakes" : `Stakes x${stakes}`;
+    $("hintSpent").textContent = r ? "" : `Hints: ${pts(a.hintCost)}`;
+  }
+  if (game.over) setStatus(game.roundResult ? "Puzzle finished" : "Game over");
   else if (game.busy) setStatus(state.out[me] ? "You have no moves left. The computer plays on." : "Computer is moving", "them");
   else setStatus("Your move", "me");
 
-  $("result").hidden = !game.over;
-  const showScore = game.over && game.lastScore != null && game.kind === "round";
-  $("resultScore").hidden = !showScore;
-  if (showScore) {
-    const prev = game.prevScore;
-    $("scoreValue").textContent = game.lastScore;
-    $("scoreChange").textContent = prev == null ? ""
-      : game.lastScore > prev ? `up from ${prev}` : game.lastScore < prev ? `down from ${prev}` : `same as last game`;
-    $("scoreChange").className = prev == null || game.lastScore === prev ? "" : game.lastScore > prev ? "up" : "down";
+  renderHints();
+  renderResult();
+}
+
+function renderResult() {
+  const box = $("result");
+  box.hidden = !game.over;
+  if (!game.over) return;
+  const sc = game.state.scores();
+  const margin = sc[game.human] - sc[1 - game.human];
+  $("resultMain").textContent = `You ${describeMargin(margin)}.`;
+  if (game.kind === "practice") {
+    $("resultSub").textContent = "Play again, or go back to the menu when you are ready.";
+    $("resultPoints").textContent = "";
+    $("againBtn").hidden = false;
+    $("practiceDoneBtn").hidden = false;
+    $("nextPuzzleBtn").hidden = true;
+    return;
   }
-  $("practiceDoneBtn").hidden = game.kind !== "practice";
-  if (game.over) {
-    const s = state.scores();
-    const margin = s[me] - s[1 - me];
-    $("resultMain").textContent = `You ${describeMargin(margin)}.`;
-    $("resultSub").textContent = game.kind === "practice"
-      ? "Play again, or go back to the menu when you are ready to start the puzzles."
-      : margin >= TARGET_MARGIN
-        ? "That's the best possible result: every move you made was perfect."
-        : `The best possible result here is a win by ${TARGET_MARGIN}.`;
-  }
+  const r = game.roundResult;
+  $("resultSub").textContent = margin >= TARGET_MARGIN ? "That's the best possible result." : `The best possible result here is a win by ${TARGET_MARGIN}.`;
+  $("resultPoints").textContent = (r.stakes === 1 ? `Result ${signedPts(margin)}` : `Result ${signedPts(margin)} x${r.stakes} = ${signedPts(r.stakes * margin)}`)
+    + `, hints -${fmtPts(r.hintCost)}. Points for this puzzle: ${signedPts(r.points)}.`;
+  $("againBtn").hidden = true;
+  $("practiceDoneBtn").hidden = true;
+  $("nextPuzzleBtn").hidden = false;
+  $("nextPuzzleBtn").textContent = session.round >= total() ? "Finish" : "Next";
 }
 
 // ---------------------------------------------------------------- input
-// Mouse: the shadow follows the pointer and a click places the piece.
-// Touch or pen: tapping or dragging on the board moves the shadow (dragging moves it by the
-// distance the finger travels, so it does not jump under the finger); tapping the shadow
-// again, without dragging, places the piece.
-let inputKind = "mouse";     // "mouse", "touch" or "pen": what was last used on the board
-let press = null;            // touch in progress: {id, start cell, shadow position at start, moved, inShadow}
+let inputKind = "mouse";
+let press = null;
 
 function cellAt(board, e) {
   const rect = board.getBoundingClientRect();
@@ -904,7 +1038,7 @@ function wireBoard(board) {
     if (!cell) return;
     if (!selected) { if (myTurn()) showMessage("Pick one of your pieces first."); return; }
     const inShadow = !!hover && placementAt(hover[0], hover[1]).cells.some(([r, c]) => r === cell[0] && c === cell[1]);
-    if (!inShadow) setHover(cell);                       // shadow jumps to the tapped square
+    if (!inShadow) setHover(cell);
     press = { id: e.pointerId, cell, last: cell, hover: hover ? [...hover] : cell, moved: false, inShadow };
   });
   board.addEventListener("pointerup", e => {
@@ -917,7 +1051,7 @@ function wireBoard(board) {
     if (!press || e.pointerId !== press.id) return;
     const p = press;
     press = null;
-    if (p.inShadow && !p.moved && selected && hover) clickCell(hover[0], hover[1]);   // tapped the shadow: place it
+    if (p.inShadow && !p.moved && selected && hover) clickCell(hover[0], hover[1]);
   });
   board.addEventListener("pointercancel", () => { press = null; });
   board.addEventListener("contextmenu", e => e.preventDefault());
@@ -932,7 +1066,7 @@ function wireInput() {
     if (!selected) return;
     e.preventDefault();
     const now = performance.now();
-    if (now - lastWheel < 150) return;               // trackpads send many small scroll events
+    if (now - lastWheel < 150) return;
     lastWheel = now;
     turn(e.deltaY > 0 ? "rotate" : "rotate_back");
   }, { passive: false });
@@ -944,14 +1078,17 @@ function wireInput() {
   });
   $("rotateBtn").addEventListener("click", () => turn("rotate"));
   $("flipBtn").addEventListener("click", () => turn("flip"));
-  $("againBtn").addEventListener("click", () => newAttempt());
+  $("againBtn").addEventListener("click", newPracticeGame);
   $("practiceDoneBtn").addEventListener("click", endPractice);
-  $("nextBtn").addEventListener("click", endRound);
+  $("nextPuzzleBtn").addEventListener("click", afterRound);
+  $("hintPieceBtn").addEventListener("click", () => buyHint("piece"));
+  $("hintCornerBtn").addEventListener("click", () => buyHint("corner"));
+  $("hintFullBtn").addEventListener("click", () => buyHint("full"));
+  $("quizBtn").addEventListener("click", checkQuiz);
   $("moreBtn").addEventListener("click", () => { record("play_more", { puzzles: session.round }); startRound($("moreBtn"), $("thanksMore")); });
   $("finishBtn").addEventListener("click", () => finishSession(true));
   $("breakBtn").addEventListener("click", takeBreak);
   $("thanksDownloadBtn").addEventListener("click", download);
-
   $("startBtn").addEventListener("click", startFromMenu);
   $("rulesBtn").addEventListener("click", () => { record("rules_open", { from: "menu" }); show("rules"); });
   $("rulesBack").addEventListener("click", () => { record("rules_close", { from: "menu" }); showMenu(); });
@@ -965,14 +1102,13 @@ function wireInput() {
     a.textContent = RESEARCHER_EMAIL;
     a.href = `mailto:${RESEARCHER_EMAIL}?subject=Blokus study`;
   }
-
   document.addEventListener("visibilitychange", () => {
     record("visibility", { state: document.visibilityState });
     if (document.visibilityState === "hidden") uploadOnLeave();
   });
   window.addEventListener("blur", () => record("window_blur"));
   window.addEventListener("focus", () => record("window_focus"));
-  window.addEventListener("pagehide", () => { tick(); save(); });
+  window.addEventListener("pagehide", () => save());
 }
 
 // No zooming on phones. Safari on iPhone ignores user-scalable=no in the viewport tag,
@@ -996,14 +1132,11 @@ function main() {
   returnVisit = !!saved && session.practiceDone && !session.finished;
   record("page_load", { resumed: !!saved });
   if (!storageOk) $("storageNote").hidden = false;
-  if (saved && session.active) {
-    record("round_interrupted", { round: session.active.index + 1, opening: session.active.opening, elapsedMs: Math.round(session.active.elapsedMs) });
-    if (session.active.attemptOpen) abandonAttempt("page closed");
-  }
+  if (saved && session.active) record("round_interrupted", { round: session.active.index + 1, opening: session.active.opening });
   if (session.finished) showDone();
   else if (!session.consent) show("consent");
   else showMenu();
-  if (session.consent) sendContact();          // retry an unsent prize email
+  if (session.consent) sendContact();
 
   if (DEV) {
     $("devbar").hidden = false;
@@ -1012,9 +1145,6 @@ function main() {
       location.reload();
     });
     $("devDownload").addEventListener("click", download);
-    $("devSkip").addEventListener("click", () => {
-      if (session.active) { session.active.elapsedMs = Math.max(session.active.elapsedMs, REQUIRED_MS - 2000); updateClock(); }
-    });
   }
   // read-only view for automated tests
   window.blokusTest = { get game() { return game; }, get selected() { return selected; }, get session() { return session; }, anchorOf, orientationIndex };

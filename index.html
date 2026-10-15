@@ -7,36 +7,35 @@
 <style>
   /* colours and proportions taken from blokus_game.py */
   :root {
-    --bg: #ECEEF2;        /* BG */
-    --board: #D6DAE2;     /* BOARD_BG */
-    --grid: #BEC4CE;      /* GRID */
-    --ink: #282C34;       /* TEXT */
-    --muted: #828894;     /* MUTED */
-    --warn: #AA2828;      /* WARN */
+    --bg: #ECEEF2;
+    --board: #D6DAE2;
+    --grid: #BEC4CE;
+    --ink: #282C34;
+    --muted: #828894;
+    --warn: #AA2828;
+    --good: #1F7A3A;
     --blue: #346ED6;
     --yellow: #E8B414;
     --used: #C8CCD4;
+    --hint: #8A3FC7;
     --size: min(8.2vmin, 66px);
     --radius: max(2px, calc(var(--size) / 9));
   }
   #play.me-0 { --me: var(--blue); --me-ghost: rgba(52, 110, 214, .67); --them: var(--yellow); }
   #play.me-1 { --me: var(--yellow); --me-ghost: rgba(232, 180, 20, .67); --them: var(--blue); }
   * { box-sizing: border-box; }
-  /* no pinch or double-tap zoom on phones (iPhones ignore user-scalable=no, so this and the
-     gesture blocking in experiment.js do the work); scrolling still works */
   html, body { touch-action: pan-x pan-y; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
     font-family: "Segoe UI", Helvetica, Arial, sans-serif; font-size: 17px; line-height: 1.45;
   }
   button { font: inherit; color: inherit; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
-  /* text that only makes sense with a mouse, or only on a touch screen */
   .touch-only { display: none; }
   @media (hover: none) and (pointer: coarse) { .mouse-only { display: none !important; } .touch-only { display: revert; } }
   button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
   [hidden] { display: none !important; }
 
-  .devbar { background: #DADEE5; color: var(--muted); font-size: 14px; padding: 6px 16px; display: flex; gap: 10px; align-items: center; }
+  .devbar { background: #DADEE5; color: var(--muted); font-size: 14px; padding: 6px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .devbar button { font-size: 14px; }
 
   .btn {
@@ -47,21 +46,21 @@
   .btn.quiet { border-color: var(--grid); color: var(--muted); font-weight: 400; }
   .btn:disabled { opacity: .35; cursor: not-allowed; }
 
-  /* ---- menu, rules, finish */
+  /* ---- pages */
   .page { max-width: 640px; margin: 0 auto; padding: 48px 20px; }
   .page h1 { font-size: 2.2rem; margin: 0 0 6px; }
   .page h2 { font-size: 1.15rem; margin: 26px 0 6px; }
   .lead { color: var(--muted); margin: 0 0 28px; }
   .stack { display: flex; flex-direction: column; gap: 12px; align-items: flex-start; }
   .stack .btn { min-width: 240px; }
-  .progress { display: flex; gap: 6px; margin: 0 0 28px; }
+  .progress { display: flex; gap: 6px; margin: 0 0 28px; flex-wrap: wrap; }
   .progress span { width: 22px; height: 22px; border-radius: 4px; background: var(--board); border: 1px solid var(--grid); }
   .progress span.done { background: var(--ink); border-color: var(--ink); }
   .progress span.now { border: 2px solid var(--ink); }
   .note { color: var(--warn); }
   .menu-later { color: var(--muted); margin-top: 24px; }
-  .consent p, .consent li { margin: 0 0 8px; }
-  .consent ul { padding-left: 22px; margin: 0; }
+  .consent p, .consent li, .rules p, .rules li, .intro p, .intro li { margin: 0 0 8px; }
+  .consent ul, .rules ul, .intro ul { padding-left: 22px; margin: 0; }
   .check { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 10px; cursor: pointer; }
   .check input { width: 18px; height: 18px; margin-top: 3px; flex: none; }
   .field-label { display: block; font-weight: 600; margin: 4px 0 4px; }
@@ -70,13 +69,27 @@
   .field:disabled { background: var(--board); color: var(--muted); }
   .form-hint { color: var(--muted); min-height: 1.5em; margin: 14px 0 12px; }
   .code { font-weight: 700; letter-spacing: .06em; }
-  .rules p, .rules li { margin: 0 0 8px; }
   .progress-count { color: var(--muted); margin: -18px 0 22px; }
-  .break-note { background: #fff; border: 2px solid var(--ink); border-radius: 10px; padding: 12px 16px; margin-top: 16px; }
-  .break-note p { margin: 0 0 8px; }
-  .break-note p:last-child { margin-bottom: 0; }
+  .break-note, .box { background: #fff; border: 2px solid var(--ink); border-radius: 10px; padding: 12px 16px; margin-top: 16px; }
+  .break-note p, .box p { margin: 0 0 8px; }
+  .break-note p:last-child, .box p:last-child { margin-bottom: 0; }
   .break-link { word-break: break-all; font-weight: 600; color: var(--ink); }
-  .rules ul { padding-left: 22px; margin: 0; }
+
+  /* quiz and offer forms */
+  .q { background: #fff; border: 2px solid var(--grid); border-radius: 10px; padding: 12px 16px; margin: 0 0 14px; }
+  .q.wrong { border-color: var(--warn); }
+  .q.right { border-color: var(--good); }
+  .q-text { font-weight: 600; margin: 0 0 8px; }
+  .q label { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 6px; cursor: pointer; }
+  .q input[type=radio] { width: 18px; height: 18px; margin-top: 3px; flex: none; }
+  .q-why { color: var(--warn); margin: 6px 0 0; }
+  .q.right .q-why { color: var(--good); }
+  .select { font: inherit; padding: 7px 10px; border: 2px solid var(--grid); border-radius: 8px; background: #fff; max-width: 100%; }
+  .mini-board { display: grid; grid-template-columns: repeat(8, 22px); gap: 0; width: max-content; background: var(--board); margin: 6px 0 18px; }
+  .mini-board span { width: 22px; height: 22px; border: 1px solid var(--grid); }
+  .mini-board span.p0 { background: var(--blue); border-color: #fff; }
+  .mini-board span.p1 { background: var(--yellow); border-color: #fff; }
+  .reveal { font-size: 1.4rem; font-weight: 700; margin: 0 0 6px; }
 
   /* ---- playing */
   #play main { max-width: 1000px; margin: 0 auto; padding: 18px 16px 40px; }
@@ -85,8 +98,8 @@
   #status.me { color: var(--me); }
   #status.them { color: var(--them); }
   .meta { color: var(--muted); text-align: right; }
-  #clock { font-size: 1.6rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
-  #clock.extra { color: var(--muted); font-size: 1.2rem; }
+  .stakes-info { font-size: 1.3rem; font-weight: 700; color: var(--ink); }
+  #clock.low { color: var(--warn); }
 
   .timeup {
     display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
@@ -100,20 +113,19 @@
     background: var(--board); user-select: none; touch-action: none; width: max-content;
   }
   .cell { width: var(--size); height: var(--size); border: 1px solid var(--grid); position: relative; }
-  /* placed squares sit 1px inside their cell, so pieces show a small gap between squares as in Python */
   .cell.p0, .cell.p1 { border-color: transparent; border-radius: var(--radius); background-clip: padding-box; }
   .cell.p0 { background-color: var(--blue); }
   .cell.p1 { background-color: var(--yellow); }
-  /* the piece being placed: grey where it cannot go, your colour where it can */
-  .cell.gl::after, .cell.gi::after { content: ""; position: absolute; inset: -1px; border-radius: var(--radius); z-index: 1; }
+  .cell.gl::after, .cell.gi::after { content: ""; position: absolute; inset: -1px; border-radius: var(--radius); z-index: 2; }
   .cell.gl::after { background: var(--me-ghost); box-shadow: inset 0 0 0 2px var(--me); }
   .cell.gi::after { background: rgba(70, 74, 84, .43); box-shadow: inset 0 0 0 2px #464A54; }
-  /* squares where one of your pieces can start */
   .cell.anchor::after { content: ""; position: absolute; inset: 37%; border-radius: 50%; background: var(--me); opacity: .7; }
-  /* the computer's last move */
   .cell.last::before { content: ""; position: absolute; inset: -1px; border-radius: var(--radius); box-shadow: inset 0 0 0 3px rgba(40, 44, 52, .55); }
   .cell.last { animation: flash 1.2s ease-out 1; }
   @keyframes flash { from { filter: brightness(1.3); } to { filter: none; } }
+  /* hints on the board: the corner square gets a ring, the full move a striped outline */
+  .cell.hc { box-shadow: inset 0 0 0 4px var(--hint); }
+  .cell.hm { background-image: repeating-linear-gradient(45deg, rgba(138, 63, 199, .38) 0 6px, transparent 6px 12px); box-shadow: inset 0 0 0 3px var(--hint); }
   @media (prefers-reduced-motion: reduce) { .cell.last { animation: none; } }
 
   #message { min-height: 1.6em; margin-top: 8px; color: var(--warn); }
@@ -124,65 +136,74 @@
   .result .btn { align-self: flex-start; }
   .result-text { width: 100%; }
   #resultMain { font-size: 1.4rem; font-weight: 700; }
+  .points-line { margin-top: 6px; }
   .score { margin-top: 8px; }
   .score-value { font-size: 1.4rem; font-weight: 700; }
   #scoreChange { margin-left: 6px; font-weight: 600; }
-  #scoreChange.up { color: #1F7A3A; }
+  #scoreChange.up { color: var(--good); }
   #scoreChange.down { color: var(--warn); }
   .score-note { color: var(--muted); font-size: 14px; }
 
-  .side { flex: 1; min-width: 260px; max-width: 320px; }
+  /* hint panel */
+  .hints { background: #fff; border: 2px solid var(--hint); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
+  .hints-head { font-weight: 700; margin-bottom: 6px; color: var(--hint); }
+  .hints-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+  .hints-buttons button { background: #fff; border: 2px solid var(--hint); border-radius: 8px; padding: 6px 10px; cursor: pointer; text-align: left; }
+  .hints-buttons button:disabled { border-color: var(--grid); color: var(--muted); cursor: default; }
+  .hints-buttons button .price { display: block; font-size: 14px; color: var(--muted); }
+  .hints-note { color: var(--muted); font-size: 15px; margin-top: 6px; }
+
+  .side { flex: 1; min-width: 260px; max-width: 330px; }
   .side h2 { font-size: 1rem; margin: 0 0 6px; }
   .tray { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 14px; user-select: none; -webkit-user-select: none; }
   .piece {
     background: transparent; border: 3px solid transparent; border-radius: 8px; height: 66px;
-    display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center; cursor: pointer; padding: 0; position: relative;
   }
   @media (hover: hover) { .piece:hover:not(:disabled) { background: rgba(255, 255, 255, .55); } }
   .piece.selected { background: #fff; border-color: var(--me); }
+  .piece.hinted { border-color: var(--hint); border-style: dashed; }
+  .piece.hinted::after { content: "hint"; position: absolute; top: 1px; right: 4px; font-size: 11px; font-weight: 700; color: var(--hint); }
   .piece:disabled { cursor: default; }
   .mini { display: grid; gap: 1px; }
   .mini span { width: 12px; height: 12px; }
   .mini span.on.c0 { background: var(--blue); }
   .mini span.on.c1 { background: var(--yellow); }
   .mini span.off { box-shadow: inset 0 0 0 1px var(--used); }
-  .controls { display: flex; gap: 8px; margin-bottom: 8px; }
+  .controls { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
   .controls button { background: #fff; border: 2px solid var(--grid); border-radius: 8px; padding: 5px 14px; cursor: pointer; }
   .hint { color: var(--muted); font-size: 15px; margin: 0 0 20px; }
   .their { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 22px; }
   .their .mini span { width: 9px; height: 9px; }
 
-  /* rules shown on top of a game */
   .overlay { position: fixed; inset: 0; background: rgba(40, 44, 52, .45); display: flex; align-items: flex-start; justify-content: center; overflow: auto; padding: 40px 16px; z-index: 10; }
   .overlay .page { background: var(--bg); border-radius: 12px; padding: 28px 32px; }
 
-  /* ---- phones: board fills the width, pieces and buttons sit straight under it */
   @media (max-width: 700px) {
-    :root { --size: min(56px, calc((100vw - 26px) / 8), max(32px, calc((100vh - 330px) / 8))); }
+    :root { --size: min(56px, calc((100vw - 26px) / 8), max(32px, calc((100vh - 360px) / 8))); }
     body { font-size: 16px; }
     .page { padding: 28px 16px 40px; }
     .page h1 { font-size: 1.8rem; }
     .stack .btn { min-width: 0; width: 100%; padding: 12px 22px; }
     #play main { padding: 10px 12px 32px; }
     .topline { margin-bottom: 8px; gap: 10px; }
-    #status, #clock { font-size: 1.25rem; }
-    #clock.extra { font-size: 1rem; }
+    #status, .stakes-info { font-size: 1.15rem; }
     .meta { font-size: 14px; }
     .layout { gap: 8px; flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
     .layout > div:first-child { align-self: center; }
     .side { min-width: 0; max-width: none; width: 100%; display: flex; flex-direction: column; }
-    /* keep the pieces and buttons straight under the board; the time-up note goes below them */
-    .side > * { order: 4; }
+    .side > * { order: 5; }
     .side > #result { order: 0; }
-    .side > #tray { order: 1; }
-    .side > .controls { order: 2; }
-    .side > #timeup { order: 3; }
+    .side > #hintPanel { order: 1; }
+    .side > #tray { order: 2; }
+    .side > .controls { order: 3; }
+    .side > #timeup { order: 4; }
     .side > h2.yours { display: none; }
     #message { min-height: 1.4em; margin-top: 4px; }
     .tray { grid-template-columns: repeat(5, 1fr); gap: 4px; margin-bottom: 10px; }
     .piece { height: 54px; }
     .controls button { flex: 1; padding: 10px 8px; }
-    .result, .timeup { margin-bottom: 10px; }
+    .result, .timeup, .hints { margin-bottom: 10px; }
     .overlay { padding: 12px; }
     .overlay .page { padding: 20px 16px; }
   }
@@ -192,7 +213,6 @@
 <div id="devbar" class="devbar" hidden>
   Testing only:
   <button id="devReset">Reset session</button>
-  <button id="devSkip">Jump to end of required time</button>
   <button id="devDownload">Download data</button>
 </div>
 
@@ -206,26 +226,35 @@
 
     <h2>About the study</h2>
     <p>This study is part of an undergraduate economics dissertation at the University of Edinburgh, run by Ryan Longhurst
-      and supervised by [supervisor name]. It looks at how people learn to solve puzzles in the board game Blokus.
-      [Ethics approval reference.]</p>
+      and supervised by [supervisor name]. It looks at how people solve puzzles in the board game Blokus, and when they
+      choose to pay for hints. [Ethics approval reference.]</p>
 
     <h2>What you will do</h2>
     <ul>
-      <li>Play a short practice game to learn the controls.</li>
-      <li>Play Blokus puzzles against a computer that plays perfectly. There are nine puzzles, 10 minutes each. You can
-        play each puzzle as many times as you like in its 10 minutes, and keep going after that if you want to.</li>
-      <li>The first puzzle takes about 15 minutes including the practice game. Every puzzle after that helps the
-        study, so please do as many as you can, but you can stop whenever you like.</li>
+      <li>Play a short practice game to learn the controls, then answer a few quick questions about how points work.</li>
+      <li>Play Blokus puzzles against a computer that plays perfectly. You play each puzzle once, as a single game of a
+        few minutes. Before each move you can buy hints with points.</li>
+      <li>The first 3 puzzles take about 15 minutes including the practice game. There are 9 puzzles in all: every
+        puzzle after the first 3 helps the study, so please do as many as you can, but you can stop whenever you like.</li>
       <li><strong>You do not need to do it all in one go.</strong> Your progress is saved in this browser, so you can
-        stop after any puzzle, or even partway through one, and come back later to carry on where you left off. Use
-        the same device and browser when you come back (not a private or incognito window).</li>
+        stop and come back later on the same device and browser (not a private or incognito window).</li>
       <li>The study works on a computer, tablet or phone.</li>
+    </ul>
+
+    <h2>Points and payment</h2>
+    <ul>
+      <li>Every puzzle gives you points: your result (a win by 1 is the best possible) minus what you spend on hints.
+        Some puzzles have higher stakes, where your result counts double.</li>
+      <li>At the end, one of your puzzles is picked at random and its points decide your payment: [payment rule, e.g. a
+        fixed amount plus an amount per point]. So every puzzle could be the one that counts.</li>
+      <li>To be paid, give your email address below. It is used only to arrange payment, is stored separately from your
+        game data, and is deleted once payment has been made. You can take part without giving it.</li>
     </ul>
 
     <h2>What is recorded</h2>
     <ul>
-      <li>Every move you make and when you make it, the pieces you pick up and turn, and when this page is in the
-        background. Also your browser type and screen size.</li>
+      <li>Every move you make and when you make it, the hints you buy, your answers to the questions, the pieces you pick
+        up and turn, and when this page is in the background. Also your browser type and screen size.</li>
       <li>Your name is not recorded. Your games are saved under a random code and stored on the Open Science Framework
         (OSF). [Who can access the data, how long it is kept, and whether anonymised data will be shared.]</li>
     </ul>
@@ -238,23 +267,15 @@
       <li>If you do not want to take part, simply close this page. Nothing is sent unless you agree below.</li>
     </ul>
 
-    <h2>Prizes</h2>
-    <ul>
-      <li>For each of the nine puzzles there is a prize of [amount] for the participant with the best accuracy on that
-        puzzle. Accuracy is judged on your best single attempt. Ties are decided by a random draw.</li>
-      <li>To enter, give your email address below. It is used only to contact winners, is stored separately from your
-        game data, and is deleted once prizes have been paid. You can take part without entering.</li>
-    </ul>
-
     <h2>Consent</h2>
     <label class="check"><input type="checkbox" id="consentRead"> <span>I have read and understood the information above.</span></label>
     <label class="check"><input type="checkbox" id="consentAge"> <span>I am 18 or over.</span></label>
     <label class="check"><input type="checkbox" id="consentAgree"> <span>I agree to take part, and for my game data to be used as described above.</span></label>
 
-    <h2>Prize entry (optional)</h2>
+    <h2>Payment (optional)</h2>
     <label class="field-label" for="prizeEmail">Email address</label>
     <input class="field" type="email" id="prizeEmail" autocomplete="email" spellcheck="false">
-    <label class="check"><input type="checkbox" id="noPrize"> <span>I don't want to enter for a prize.</span></label>
+    <label class="check"><input type="checkbox" id="noPrize"> <span>I don't want to be paid.</span></label>
 
     <p id="consentHint" class="form-hint" aria-live="polite"></p>
     <button id="consentBtn" class="btn primary" disabled>Continue</button>
@@ -267,7 +288,8 @@
     <h1>Blokus puzzles</h1>
     <p id="menuLead" class="lead"></p>
     <div id="progress" class="progress"></div>
-    <div class="stack">
+    <p id="menuStakes" class="box" hidden></p>
+    <div class="stack" style="margin-top: 20px">
       <button id="startBtn" class="btn primary"></button>
       <button id="rulesBtn" class="btn">Rules</button>
     </div>
@@ -293,10 +315,11 @@
   <h2>The puzzles</h2>
   <ul>
     <li>Each puzzle starts with one piece already placed for each player. Sometimes you play Blue, sometimes Yellow.</li>
-    <li>The computer plays perfectly. In every puzzle, perfect play wins by exactly 1 point, and that is the best result possible.</li>
-    <li>You have 10 minutes for each puzzle and can play it as many times as you like. After 10 minutes you can finish the puzzle, or keep playing for as long as you want.</li>
-    <li>You can do the puzzles over several sittings. Your progress is saved in this browser, so you can close the page and come back later on the same device to carry on.</li>
-    <li>After each game you get a score out of 100 as a rough guide to how well you played. 100 means every move was perfect. The score is not used to decide prizes.</li>
+    <li>The computer plays perfectly. In every puzzle, perfect play wins by exactly 1, and that is the best result possible.</li>
+    <li>You play each puzzle once.</li>
+    <li>Before a move you can buy hints: which piece to use, where to put it (the starting square), or the whole move. Prices change from move to move, and on some moves there are no hints. A hint always shows a move that keeps the best result still possible.</li>
+    <li>Your points for a puzzle are your margin (for example +1 for a win by 1, -3 for a loss by 3), multiplied by the puzzle's stakes (1 or 2), minus what you spent on hints.</li>
+    <li>You can do the puzzles over several sittings. Your progress is saved in this browser.</li>
   </ul>
   <h2>Controls</h2>
   <ul>
@@ -311,7 +334,7 @@
   <div class="page rules">
     <h1>Rules</h1>
     <div class="rules-body"></div>
-    <p style="margin-top: 28px"><button id="rulesBack" class="btn primary">Back to menu</button></p>
+    <p style="margin-top: 28px"><button id="rulesBack" class="btn primary">Back</button></p>
   </div>
 </section>
 <div id="rulesOverlay" class="overlay" hidden>
@@ -322,6 +345,32 @@
   </div>
 </div>
 
+<!-- ---------------------------------------------------------------- instructions and check -->
+<section id="intro" hidden>
+  <div class="page intro">
+    <h1>How the puzzles work</h1>
+    <p class="lead">You play each puzzle once against the perfect computer.</p>
+    <ul>
+      <li>The best result possible in every puzzle is a <strong>win by 1</strong>.</li>
+      <li>Your points for a puzzle are your margin, times the puzzle's <strong>stakes</strong>, minus what you spend on
+        hints. Most puzzles have normal stakes (x1); some have <strong>stakes x2</strong>, where your result counts
+        double. Hints cost the same either way. You are told the stakes before each puzzle starts.</li>
+      <li>On your turn, the hint box shows what each hint costs <strong>for this move</strong>. Prices change from move to
+        move, and on some moves there are no hints.</li>
+      <li><strong>Which piece?</strong> marks the piece to use. <strong>Where?</strong> rings the square the piece should
+        start from. <strong>Show the move</strong> shows exactly where the piece goes.</li>
+      <li>Hints are always right: they show a move that keeps the best result you can still get. They only help with the
+        move you are about to make. You can buy none, one, or several.</li>
+      <li>At the end one puzzle is picked at random to decide your payment, so every puzzle counts.</li>
+    </ul>
+    <h2>Quick check</h2>
+    <p>Please answer these so we know the instructions are clear.</p>
+    <div id="quiz"></div>
+    <p id="quizHint" class="form-hint" aria-live="polite"></p>
+    <div class="stack"><button id="quizBtn" class="btn primary">Check answers</button></div>
+  </div>
+</section>
+
 <!-- ---------------------------------------------------------------- playing -->
 <section id="play" hidden>
   <main>
@@ -331,9 +380,8 @@
         <div id="roundInfo" class="meta" style="text-align: left"></div>
       </div>
       <div class="meta">
-        <div id="clock"></div>
-        <div id="attemptInfo"></div>
-        <div id="bestInfo"></div>
+        <div id="stakesInfo" class="stakes-info"></div>
+        <div id="hintSpent"></div>
       </div>
     </div>
     <div class="layout">
@@ -344,18 +392,22 @@
       <div class="side">
         <div id="result" class="result" hidden>
           <div class="result-text">
-            <div id="resultMain"></div><div id="resultSub"></div>
-            <div id="resultScore" class="score" hidden>
-              Score <span id="scoreValue" class="score-value"></span> out of 100 <span id="scoreChange"></span>
-              <div class="score-note">A rough guide to how well you played: 100 means every move was perfect. Not used for prizes.</div>
-            </div>
+            <div id="resultMain"></div>
+            <div id="resultSub"></div>
+            <div id="resultPoints" class="points-line"></div>
           </div>
-          <button id="againBtn" class="btn primary">Try again</button>
+          <button id="againBtn" class="btn primary">Play again</button>
+          <button id="nextPuzzleBtn" class="btn primary" hidden>Next</button>
           <button id="practiceDoneBtn" class="btn" hidden>Back to menu</button>
         </div>
-        <div id="timeup" class="timeup" hidden>
-          <p id="timeupText"></p>
-          <button id="nextBtn" class="btn primary"></button>
+        <div id="hintPanel" class="hints" hidden>
+          <div class="hints-head">Hints for this move</div>
+          <div id="hintButtons" class="hints-buttons">
+            <button id="hintPieceBtn">Which piece?<span class="price"></span></button>
+            <button id="hintCornerBtn">Where?<span class="price"></span></button>
+            <button id="hintFullBtn">Show the move<span class="price"></span></button>
+          </div>
+          <div id="hintNote" class="hints-note"></div>
         </div>
         <h2 class="yours">Your pieces</h2>
         <div id="tray" class="tray"></div>
@@ -387,6 +439,7 @@
     </div>
     <h2 id="thanksMoreTitle">Want to help more?</h2>
     <p id="thanksMore"></p>
+    <p id="thanksStakes" class="box"></p>
     <p id="thanksLater"></p>
     <div class="stack" style="margin-top: 18px">
       <button id="moreBtn" class="btn primary"></button>
@@ -396,7 +449,7 @@
       <p><strong>Your progress is saved.</strong> You can close this page now. To carry on, open this page again in
         this browser on this device:</p>
       <p><a id="breakLink" class="break-link"></a></p>
-      <p>Bookmarking it makes it easy to find. You will start from your next puzzle.</p>
+      <p>Bookmarking it makes it easy to find.</p>
     </div>
     <p style="margin-top: 22px"><button id="finishBtn" class="btn quiet">I'm finished with the study</button></p>
     <p id="thanksCode" style="margin-top: 28px"></p>
@@ -408,6 +461,7 @@
   <div class="page">
     <h1>All done</h1>
     <p id="doneLead" class="lead">Thank you for taking part.</p>
+    <p id="doneBonus" class="box" hidden></p>
     <p id="doneStatus" aria-live="polite"></p>
     <div id="doneFallback" hidden>
       <p>Please download your data file and email it to the researcher at <a class="researcher-email"></a>.</p>
@@ -419,6 +473,7 @@
 
 <script src="blokus_engine.js"></script>
 <script src="blokus_lookup.js"></script>
+<script src="values.js"></script>
 <script src="experiment.js"></script>
 </body>
 </html>
