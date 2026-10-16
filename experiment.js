@@ -6,11 +6,12 @@
 // where to start it, or the whole move. The price is drawn at random for each move, and on
 // some moves no hints are offered. Each puzzle also has random stakes: the result counts
 // once or twice (hint prices stay the same).
-//   Points for a puzzle = stakes x final margin - hint costs.
+//   Score for a puzzle = 20 - stakes x (points short of a win by 1) - hint costs, at least 0.
+//   (The same as stakes x margin - hint costs plus a constant, so incentives are unchanged;
+//   the 20-point start just keeps scores positive. A score floored at 0 should be flagged.)
 // At the end one finished puzzle is drawn at random to decide payment.
 //
-// Puzzles come in a fixed order (ORDER). The first REQUIRED_PUZZLES are required; after
-// them a thank-you screen invites the participant to carry on, up to all nine.
+// Puzzles come in a fixed order (ORDER) and all nine are required (REQUIRED_PUZZLES).
 //
 // Everything is recorded in session.events and saved in the browser, so a participant can
 // close the page and carry on later. An interrupted puzzle is restored move by move with
@@ -22,7 +23,8 @@ const SIDES = { 311: 0, 39: 0, 230: 0, 419: 0, 243: 0, 2: 0, 41: 1, 15: 1, 6: 1 
 // Fixed order for everyone: easy, hard and a Yellow puzzle come first, so the required part
 // covers a spread of difficulty. Change here if needed.
 const ORDER = [311, 243, 41, 230, 15, 39, 2, 419, 6];
-const REQUIRED_PUZZLES = 3;
+const REQUIRED_PUZZLES = 9;          // all nine (set lower to add a thank-you screen part-way)
+const START_POINTS = 20;             // every puzzle starts from this score
 const TARGET_MARGIN = 1;              // best possible result in every opening: a win by 1
 const DATA_DIR = "opponent_web/";
 
@@ -244,7 +246,7 @@ async function sendContact() {
 }
 
 // ---------------------------------------------------------------- screens
-const SCREENS = ["consent", "menu", "rules", "intro", "play", "thanks", "done"];
+const SCREENS = ["consent", "menu", "rules", "intro", "play", "thanks", "survey", "done"];
 function show(name) {
   for (const id of SCREENS) $(id).hidden = id !== name;
   record("screen", { name });
@@ -265,8 +267,15 @@ const required = () => Math.min(session.requiredPuzzles, total());
 const stakesOf = opening => session.stakes[opening] ?? 1;
 
 function stakesText(s) {
-  return s === 1 ? "Normal stakes: your result counts once."
-    : `Stakes x${s}: your result counts ${s === 2 ? "double" : `${s} times`} (a win by 1 gives ${s} points, a loss by 2 gives -${2 * s}). Hints cost the same as usual.`;
+  return s === 1 ? `Normal stakes. You start with ${START_POINTS} points and lose 1 for every point your result falls short of a win by 1.`
+    : `Stakes x${s}: you start with ${START_POINTS} points and lose ${s} for every point your result falls short of a win by 1. Hints cost the same as usual.`;
+}
+
+// Score for a finished puzzle: START_POINTS minus stakes x shortfall minus hint costs, at least 0.
+function puzzleScore(stakes, margin, hintCost) {
+  const shortfall = TARGET_MARGIN - margin;
+  const raw = START_POINTS - stakes * shortfall - hintCost;
+  return { shortfall, raw, points: Math.max(0, raw), floored: raw < 0 };
 }
 
 // The menu decides what comes next.
@@ -274,6 +283,7 @@ function showMenu() {
   if (session.finished) return showDone();
   if (!session.consent) return show("consent");
   const a = session.active;
+  if (session.practiceDone && session.quizPassed && !a && session.round >= total()) return showSurvey(false);
   if (session.practiceDone && session.quizPassed && !a && session.round >= required()) return showThanks();
   let lead, start, extra = "";
   if (!session.practiceDone) {
@@ -287,7 +297,8 @@ function showMenu() {
     start = `Continue puzzle ${a.index + 1}`;
   } else {
     const n = session.round + 1;
-    lead = n === 1 ? `There are ${required()} puzzles to play, and you can do more afterwards if you like. You play each puzzle once.`
+    lead = n === 1 ? (required() < total() ? `There are ${required()} puzzles to play, and you can do more afterwards if you like. You play each puzzle once.`
+      : `There are ${total()} puzzles. You play each one once, a single game of a few minutes.`)
       : `Puzzle ${n - 1} finished. ${required() - n + 1} to go.`;
     start = `Start puzzle ${n}`;
     extra = stakesText(stakesOf(session.order[session.round]));
@@ -348,10 +359,10 @@ function fillRules() {
 
 // ---------------------------------------------------------------- comprehension check
 const QUIZ = [
-  { q: "You buy one hint for 0.5 points, then win the puzzle by 1 at normal stakes. How many points do you get for that puzzle?",
-    options: ["1.5", "1", "0.5", "0"], answer: 2, why: "Your margin (+1) minus the hint (0.5) is 0.5." },
-  { q: "Same again, but the puzzle is at stakes x2. How many points?",
-    options: ["1.5", "1", "0.5", "2"], answer: 0, why: "The result counts double (+2), hints cost the same (0.5): 1.5." },
+  { q: "At normal stakes you buy one hint for 0.5 points, then win the puzzle by 1. What is your score for that puzzle?",
+    options: ["20", "19.5", "19", "0.5"], answer: 1, why: "A win by 1 is the best result, so nothing is lost for the result: 20 minus the hint (0.5) is 19.5." },
+  { q: "At stakes x2 you buy no hints and lose by 1. That is 2 short of a win by 1. What is your score?",
+    options: ["18", "16", "20", "14"], answer: 1, why: "Each point short costs 2 at stakes x2: 20 minus 2 x 2 is 16." },
   { q: "What is the best result possible in every puzzle?",
     options: ["A win by 1", "A win by 5", "A draw"], answer: 0, why: "Perfect play wins by exactly 1 in every puzzle." },
   { q: "Can a hint ever point you to a move that makes your result worse?",
@@ -359,6 +370,9 @@ const QUIZ = [
     why: "Hints come from the perfect computer, so they are never wrong." },
   { q: "How many times do you play each puzzle?",
     options: ["Once", "As many times as I like"], answer: 0, why: "Each puzzle is a single game." },
+  { q: "If a hint is expensive on one move, does that mean the move is a hard one?",
+    options: ["Yes, expensive hints are for hard moves", "No, prices are picked at random and say nothing about the move"], answer: 1,
+    why: "Prices (and moves with no hints) are picked at random, so they tell you nothing about the position." },
 ];
 
 function showQuiz() {
@@ -724,7 +738,7 @@ function finishGame() {
   const a = session.active;
   const result = {
     round: a.index + 1, opening: a.opening, side: a.side, stakes: a.stakes, midGame: a.midGame, startMoves: a.startMoves,
-    margin, hintCost: a.hintCost, points: a.stakes * margin - a.hintCost, moves: a.moves, decisions: a.decisions,
+    margin, hintCost: a.hintCost, ...puzzleScore(a.stakes, margin, a.hintCost), moves: a.moves, decisions: a.decisions,
   };
   session.results.push(result);
   session.active = null;
@@ -739,8 +753,55 @@ function finishGame() {
 // "Next" after a puzzle: the menu for the next required puzzle, or the thank-you screen.
 function afterRound() {
   game = null; selected = null;
-  if (session.round >= total()) return finishSession(false);
+  if (session.round >= total()) return showSurvey(false);
   showMenu();
+}
+
+// ---------------------------------------------------------------- short questionnaire at the end
+// Mainly to spot data that cannot be used as it stands: people who had played these puzzles
+// before, or were told how to play them (everyone gets the same puzzles and the computer
+// always plays the same way).
+const SURVEY = [
+  { id: "experience", q: "How much Blokus had you played before this study?", options: ["Never", "A few times", "Quite often"] },
+  { id: "before", q: "Have you taken part in this study before, or played these puzzles before (for example on another device)?", options: ["No", "Yes"] },
+  { id: "help", q: "Did anyone tell you how to play any of these puzzles, or did you use any help apart from the hints in the game?", options: ["No", "Yes"] },
+];
+let surveyEarly = false;
+
+function showSurvey(early) {
+  surveyEarly = early;
+  $("surveyQs").replaceChildren(...SURVEY.map(item => {
+    const d = document.createElement("div");
+    d.className = "q";
+    const p = document.createElement("p");
+    p.className = "q-text";
+    p.textContent = item.q;
+    d.appendChild(p);
+    item.options.forEach(opt => {
+      const l = document.createElement("label");
+      const r = document.createElement("input");
+      r.type = "radio"; r.name = `s_${item.id}`; r.value = opt;
+      l.append(r, document.createTextNode(opt));
+      d.appendChild(l);
+    });
+    return d;
+  }));
+  $("surveyComment").value = "";
+  $("surveyHint").textContent = "";
+  show("survey");
+}
+
+function submitSurvey() {
+  const answers = {};
+  for (const item of SURVEY) {
+    const r = document.querySelector(`input[name="s_${item.id}"]:checked`);
+    if (!r) { $("surveyHint").textContent = "Please answer the three questions (the comment box is optional)."; return; }
+    answers[item.id] = r.value;
+  }
+  answers.comment = $("surveyComment").value.trim().slice(0, 2000);
+  session.survey = answers;
+  record("survey", answers);
+  finishSession(surveyEarly);
 }
 
 // ---------------------------------------------------------------- thanks, finish, payment draw
@@ -800,7 +861,7 @@ async function showDone() {
   $("doneLead").textContent = (n >= total() ? `You have finished all ${total()} puzzles.` : `You played ${n} puzzle${n === 1 ? "" : "s"}.`) + " Thank you for taking part.";
   const b = session.bonusDraw;
   $("doneBonus").hidden = !b;
-  if (b) $("doneBonus").textContent = `The puzzle picked for your payment: puzzle ${b.round}, with ${pts(b.points)}.`;
+  if (b) $("doneBonus").textContent = `The puzzle picked for your payment: puzzle ${b.round}, with a score of ${fmtPts(b.points)} out of ${START_POINTS}.`;
   $("doneCode").innerHTML = `Your participant code is <span class="code">${session.participant}</span>. Keep it if you might want your data removed later.`;
   $("doneFallback").hidden = true;
   if (session.finalSent) {
@@ -1060,8 +1121,12 @@ function renderResult() {
   }
   const r = game.roundResult;
   $("resultSub").textContent = margin >= TARGET_MARGIN ? "That's the best possible result." : `The best possible result here is a win by ${TARGET_MARGIN}.`;
-  $("resultPoints").textContent = (r.stakes === 1 ? `Result ${signedPts(margin)}` : `Result ${signedPts(margin)} x${r.stakes} = ${signedPts(r.stakes * margin)}`)
-    + `, hints -${fmtPts(r.hintCost)}. Points for this puzzle: ${signedPts(r.points)}.`;
+  const lost = r.stakes * r.shortfall;
+  const parts = [];
+  if (lost) parts.push(`${fmtPts(lost)} for the result` + (r.stakes > 1 ? ` at stakes x${r.stakes}` : ""));
+  if (r.hintCost) parts.push(`${fmtPts(r.hintCost)} for hints`);
+  $("resultPoints").textContent = `Score for this puzzle: ${fmtPts(r.points)} out of ${START_POINTS}`
+    + (parts.length ? ` (lost ${parts.join(" and ")}).` : ".");
   $("againBtn").hidden = true;
   $("practiceDoneBtn").hidden = true;
   $("nextPuzzleBtn").hidden = false;
@@ -1151,7 +1216,8 @@ function wireInput() {
   $("hintFullBtn").addEventListener("click", () => buyHint("full"));
   $("quizBtn").addEventListener("click", checkQuiz);
   $("moreBtn").addEventListener("click", () => { record("play_more", { puzzles: session.round }); startRound($("moreBtn"), $("thanksMore")); });
-  $("finishBtn").addEventListener("click", () => finishSession(true));
+  $("finishBtn").addEventListener("click", () => showSurvey(true));
+  $("surveyBtn").addEventListener("click", submitSurvey);
   $("breakBtn").addEventListener("click", takeBreak);
   $("thanksDownloadBtn").addEventListener("click", download);
   $("startBtn").addEventListener("click", startFromMenu);
