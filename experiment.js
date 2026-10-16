@@ -43,7 +43,7 @@ const START_EXTRA_MOVES = { default: 2, 2: 1, 41: 1 };
 
 // Leaderboard: the web app address of the Google Apps Script in leaderboard/Code.gs
 // (see leaderboard/SETUP.md). While empty, no leaderboard is shown.
-const LEADERBOARD_URL = "";
+const LEADERBOARD_URL = "https://script.google.com/macros/s/AKfycbzeVIIv99BTbsSjBPaOmLcscXw6q1ydj6GDZDLflIsC5X__u-KlgQh-TtbihNukBJm6/exec";
 const LEADERBOARD_NEIGHBOURS = 2;    // places shown above and below the participant
 const NAME_WORDS = [
   ["Amber", "Arctic", "Bold", "Brave", "Bright", "Calm", "Clever", "Cosmic", "Crimson", "Daring", "Dusty", "Electric",
