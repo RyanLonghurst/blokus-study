@@ -3,7 +3,8 @@
 Experiment page for my economics dissertation: participants play 8x8 Blokus puzzles against a perfect
 computer opponent and can pay for hints before each move.
 
-- `index.html`, `experiment.js`: the study (consent, practice, instructions check, puzzles with hints, thank-you screen, payment draw, data sent via DataPipe)
+- `index.html`, `experiment.js`: the study (consent, tutorial video, practice game, four quick questions, puzzles with hints, leaderboard, end questionnaire, data sent via DataPipe)
+- `tutorial.mp4`, `tutorial.vtt`, `tutorial_poster.jpg`: the tutorial video, its captions and its still. The practice game unlocks only when the video has played to the end (skipping forward is undone); if a browser cannot play it, the practice game unlocks and the page points to the written rules. With `?dev=1`, the testing bar has a Skip video button.
 - `values.js`: exact value of every legal move from the opponent files, and the hint for each position
 - `blokus_engine.js`: game rules
 - `blokus_lookup.js`: reads the opponent files

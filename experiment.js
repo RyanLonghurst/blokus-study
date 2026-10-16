@@ -20,7 +20,7 @@
 // the same prices and hints, so reloading cannot be used to retry.
 
 // ---------------------------------------------------------------- settings
-const APP_VERSION = "hints-1.0";
+const APP_VERSION = "hints-1.1";
 const SIDES = { 311: 0, 39: 0, 230: 0, 419: 0, 243: 0, 2: 0, 41: 1, 15: 1, 6: 1 };   // 0 = Blue, 1 = Yellow
 // The nine puzzles; each participant plays them in a random order.
 const ORDER = [311, 243, 41, 230, 15, 39, 2, 419, 6];
@@ -265,6 +265,7 @@ async function sendContact() {
 // ---------------------------------------------------------------- screens
 const SCREENS = ["consent", "menu", "rules", "intro", "play", "thanks", "survey", "done"];
 function show(name) {
+  pauseVideo();
   for (const id of SCREENS) $(id).hidden = id !== name;
   record("screen", { name });
   window.scrollTo(0, 0);
@@ -303,12 +304,19 @@ function showMenu() {
   if (session.practiceDone && session.quizPassed && !a && session.round >= total()) return showSurvey(false);
   if (session.practiceDone && session.quizPassed && !a && session.round >= required()) return showThanks();
   let lead, start, extra = "";
+  const needVideo = !session.practiceDone;
+  $("videoBox").hidden = !needVideo;
+  $("startBtn").hidden = needVideo && !session.videoWatched;
+  if (!needVideo) pauseVideo();
   if (!session.practiceDone) {
-    lead = "Start with a practice game to learn the controls. It does not count, and there are no hints in it.";
+    lead = session.videoWatched
+      ? "Next, a practice game to learn the controls. It does not count, and there are no hints in it."
+      : "Watch this short video (just over a minute) on how the game works. The practice game unlocks when it finishes.";
+    if (session.videoFailed) lead = "The video could not load here, so please read the Rules before the practice game.";
     start = "Start practice game";
   } else if (!session.quizPassed) {
-    lead = "Practice done. Next: how hints and points work.";
-    start = "How the puzzles work";
+    lead = "Practice done. Next: a few quick questions on how the puzzles work.";
+    start = "Quick questions";
   } else if (a) {
     lead = (returnVisit ? "Welcome back. " : "") + `Puzzle ${a.index + 1} was interrupted. It carries on exactly where you left it.`;
     start = `Continue puzzle ${a.index + 1}`;
@@ -331,6 +339,47 @@ function showMenu() {
   progressBoxes($("progress"), true);
   show("menu");
   prefetchAhead();
+}
+
+// ---------------------------------------------------------------- tutorial video
+// The practice game unlocks once the video has played to the end. Skipping forward past the
+// furthest point watched is undone (going back is fine). If the video cannot load, the
+// practice game unlocks anyway and the menu points to the written rules.
+let videoSeen = 0;
+function pauseVideo() { for (const id of ["tutorialVideo", "rulesVideo"]) { const v = $(id); if (v && !v.paused) v.pause(); } }
+function videoDone(how) {
+  if (session.videoWatched) return;
+  session.videoWatched = true;
+  record("video_done", { how, seen: Math.round(videoSeen * 10) / 10 });
+  save();
+  if (!$("menu").hidden) {
+    showMenu();
+    $("startBtn").scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}
+function wireVideo() {
+  const v = $("tutorialVideo");
+  v.addEventListener("timeupdate", () => {
+    if (!v.seeking && v.currentTime > videoSeen && v.currentTime - videoSeen < 2) videoSeen = v.currentTime;
+  });
+  v.addEventListener("seeking", () => {
+    if (!session.videoWatched && v.currentTime > videoSeen + 1) { v.currentTime = videoSeen; record("video_skip_blocked"); }
+  });
+  v.addEventListener("play", () => record("video_play", { at: Math.round(v.currentTime * 10) / 10 }));
+  v.addEventListener("pause", () => { if (!v.ended) record("video_pause", { at: Math.round(v.currentTime * 10) / 10 }); });
+  v.addEventListener("ended", () => videoDone("ended"));
+  const failed = () => {
+    if (session.videoWatched) return;
+    session.videoFailed = true;
+    record("video_error");
+    videoDone("error");
+    if (!$("menu").hidden) showMenu();
+  };
+  v.addEventListener("error", failed);
+  v.querySelector("source").addEventListener("error", failed);
+  $("videoRulesBtn").addEventListener("click", () => { pauseVideo(); record("rules_open", { from: "video" }); show("rules"); });
+  const r = $("rulesVideo");
+  r.addEventListener("play", () => record("video_replay", { at: Math.round(r.currentTime * 10) / 10 }));
 }
 
 function startFromMenu() {
@@ -361,17 +410,13 @@ function fillRules() {
 
 // ---------------------------------------------------------------- comprehension check
 const QUIZ = [
-  { q: "At normal stakes you buy one hint for 0.5 points, then win the puzzle by 1. What is your score for that puzzle?",
+  { q: "You buy one hint for 0.5 points, then win the puzzle by 1 (normal stakes). What is your score for that puzzle?",
     options: ["20", "19.5", "19", "0.5"], answer: 1, why: "A win by 1 is the best result, so nothing is lost for the result: 20 minus the hint (0.5) is 19.5." },
   { q: "At stakes x2 you buy no hints and lose by 1. That is 2 short of a win by 1. What is your score?",
     options: ["18", "16", "20", "14"], answer: 1, why: "Each point short costs 2 at stakes x2: 20 minus 2 x 2 is 16." },
-  { q: "What is the best result possible in every puzzle?",
-    options: ["A win by 1", "A win by 5", "A draw"], answer: 0, why: "Perfect play wins by exactly 1 in every puzzle." },
   { q: "Can a hint ever point you to a move that makes your result worse?",
     options: ["Yes, sometimes", "No, a hint always shows a move that keeps the best result still possible"], answer: 1,
     why: "Hints come from the perfect computer, so they are never wrong." },
-  { q: "How many times do you play each puzzle?",
-    options: ["Once", "As many times as I like"], answer: 0, why: "Each puzzle is a single game." },
   { q: "If a hint is expensive on one move, does that mean the move is a hard one?",
     options: ["Yes, expensive hints are for hard moves", "No, prices are picked at random and say nothing about the move"], answer: 1,
     why: "Prices (and moves with no hints) are picked at random, so they tell you nothing about the position." },
@@ -399,7 +444,9 @@ function showQuiz() {
     return d;
   }));
   $("quizHint").textContent = "";
+  record("quiz_shown");
   show("intro");
+  window.scrollTo(0, 0);
 }
 
 function checkQuiz() {
@@ -417,7 +464,7 @@ function checkQuiz() {
     why.hidden = false;
     why.textContent = right ? "Correct." : "Not quite. " + item.why + " Please change your answer.";
   });
-  record("quiz", { answers, passed: allRight });
+  record("quiz", { answers, passed: allRight, reminderOpen: $("introDetails").open });
   if (!allRight) { $("quizHint").textContent = "Some answers need another look."; return; }
   session.quizPassed = true;
   save();
@@ -550,6 +597,8 @@ function endPractice() {
   session.practiceDone = true;
   record("practice_end", { attempts: game.attempt });
   game = null; selected = null;
+  save();
+  if (!session.quizPassed) return showQuiz();   // straight on to the quick questions
   showMenu();
 }
 
@@ -1334,6 +1383,7 @@ function main() {
   blockZoom();
   fillRules();
   wireInput();
+  wireVideo();
   const saved = load();
   session = saved || newSession();
   returnVisit = !!saved && session.practiceDone && !session.finished;
@@ -1353,6 +1403,7 @@ function main() {
       location.reload();
     });
     $("devDownload").addEventListener("click", download);
+    $("devSkipVideo").addEventListener("click", () => { videoDone("dev_skip"); showMenu(); });
   }
   // read-only view for automated tests
   window.blokusTest = { get game() { return game; }, get selected() { return selected; }, get session() { return session; }, anchorOf, orientationIndex };

@@ -76,6 +76,12 @@
   .break-link { word-break: break-all; font-weight: 600; color: var(--ink); }
 
   /* quiz and offer forms */
+  .video-box { margin: 0 0 18px; }
+  .video-box video { display: block; width: 100%; max-width: 860px; aspect-ratio: 16 / 9; background: #000; border-radius: 12px; }
+  .video-note { color: var(--muted); margin: 10px 0 0; font-size: 15px; }
+  .link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--ink); text-decoration: underline; cursor: pointer; }
+  .intro details { background: #fff; border: 2px solid var(--grid); border-radius: 10px; padding: 10px 16px; margin: 0 0 22px; }
+  .intro summary { cursor: pointer; font-weight: 600; }
   .q { background: #fff; border: 2px solid var(--grid); border-radius: 10px; padding: 12px 16px; margin: 0 0 14px; }
   .q.wrong { border-color: var(--warn); }
   .q.right { border-color: var(--good); }
@@ -223,6 +229,7 @@
   Testing only:
   <button id="devReset">Reset session</button>
   <button id="devDownload">Download data</button>
+  <button id="devSkipVideo">Skip video</button>
 </div>
 
 <!-- ---------------------------------------------------------------- consent -->
@@ -291,6 +298,13 @@
   <div class="page">
     <h1>Blokus puzzles</h1>
     <p id="menuLead" class="lead"></p>
+    <div id="videoBox" class="video-box" hidden>
+      <video id="tutorialVideo" controls playsinline preload="metadata" poster="tutorial_poster.jpg">
+        <source src="tutorial.mp4" type="video/mp4">
+        <track kind="captions" src="tutorial.vtt" srclang="en" label="English">
+      </video>
+      <p class="video-note">Turn your sound on, or use the CC button for captions. Prefer reading? The written rules are under <button id="videoRulesBtn" class="link-btn">Rules</button>.</p>
+    </div>
     <div id="progress" class="progress"></div>
     <p id="menuStakes" class="box" hidden></p>
     <div class="stack" style="margin-top: 20px">
@@ -337,6 +351,12 @@
 <section id="rules" hidden>
   <div class="page rules">
     <h1>Rules</h1>
+    <div class="video-box">
+      <video id="rulesVideo" controls playsinline preload="none" poster="tutorial_poster.jpg">
+        <source src="tutorial.mp4" type="video/mp4">
+        <track kind="captions" src="tutorial.vtt" srclang="en" label="English">
+      </video>
+    </div>
     <div class="rules-body"></div>
     <p style="margin-top: 28px"><button id="rulesBack" class="btn primary">Back</button></p>
   </div>
@@ -352,26 +372,27 @@
 <!-- ---------------------------------------------------------------- instructions and check -->
 <section id="intro" hidden>
   <div class="page intro">
-    <h1>How the puzzles work</h1>
-    <p class="lead">You play each puzzle once against the perfect computer.</p>
-    <ul>
-      <li>The best result possible in every puzzle is a <strong>win by 1</strong>.</li>
-      <li>Each puzzle starts with <strong>20 points</strong>. You lose 1 point for every point your result falls short
-        of a win by 1: a draw costs 1, a loss by 2 costs 3. Hints you buy are also taken off.</li>
-      <li>Some puzzles have <strong>stakes x2</strong>: then each point short costs 2 instead of 1. Hints cost the same
-        either way. You are told the stakes before each puzzle starts.</li>
-      <li>On your turn, the hint box shows what each hint costs <strong>for this move</strong>. Prices change from move to
-        move, and on some moves there are no hints. Both are picked at random: a high price does not mean the move is
-        hard, and "no hints" does not mean it is easy.</li>
-      <li><strong>Which piece?</strong> marks the piece to use. <strong>Where?</strong> rings the square the piece should
-        start from. <strong>Show the move</strong> shows exactly where the piece goes.</li>
-      <li>Hints are always right: they show a move that keeps the best result you can still get. They only help with the
-        move you are about to make. You can buy none, one, or several.</li>
-      <li>After each puzzle you see where your score ranks against everyone who has played it, and at the end your
-        overall ranking.</li>
-    </ul>
-    <h2>Quick check</h2>
-    <p>Please answer these so we know the instructions are clear.</p>
+    <h1>Quick check</h1>
+    <p class="lead">A few quick questions on how the puzzles work, so we know the video was clear.</p>
+    <details id="introDetails">
+      <summary>Need a reminder? How the puzzles work</summary>
+      <ul>
+        <li>The best result possible in every puzzle is a <strong>win by 1</strong>.</li>
+        <li>Each puzzle starts with <strong>20 points</strong>. You lose 1 point for every point your result falls short
+          of a win by 1: a draw costs 1, a loss by 2 costs 3. Hints you buy are also taken off.</li>
+        <li>Some puzzles have <strong>stakes x2</strong>: then each point short costs 2 instead of 1. Hints cost the same
+          either way. You are told the stakes before each puzzle starts.</li>
+        <li>On your turn, the hint box shows what each hint costs <strong>for this move</strong>. Prices change from move to
+          move, and on some moves there are no hints. Both are picked at random: a high price does not mean the move is
+          hard, and "no hints" does not mean it is easy.</li>
+        <li><strong>Which piece?</strong> marks the piece to use. <strong>Where?</strong> rings the square the piece should
+          start from. <strong>Show the move</strong> shows exactly where the piece goes.</li>
+        <li>Hints are always right: they show a move that keeps the best result you can still get. They only help with the
+          move you are about to make. You can buy none, one, or several.</li>
+        <li>You play each puzzle once. After each one you see where your score ranks against everyone who has played it,
+          and at the end your overall ranking.</li>
+      </ul>
+    </details>
     <div id="quiz"></div>
     <p id="quizHint" class="form-hint" aria-live="polite"></p>
     <div class="stack"><button id="quizBtn" class="btn primary">Check answers</button></div>
