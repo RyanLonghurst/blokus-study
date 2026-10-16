@@ -58,7 +58,7 @@ const COMPUTER_DELAY_MS = 700;
 const STORAGE_KEY = "blokus-hints-session";   // new key: saved sessions from the old version are not mixed in
 const CONTACT_KEY = "blokus-hints-contact";
 const RESEARCHER_EMAIL = "ryanlonghurst05@icloud.com";
-const CONSENT_VERSION = "hints-draft-1";
+const CONSENT_VERSION = "hints-draft-2";
 
 // DataPipe experiment IDs (pipe.jspsych.org). While empty, nothing is sent and the finish
 // screen asks participants to download their file and email it.
@@ -263,7 +263,7 @@ async function sendContact() {
 }
 
 // ---------------------------------------------------------------- screens
-const SCREENS = ["consent", "menu", "rules", "intro", "play", "thanks", "survey", "done"];
+const SCREENS = ["consent", "menu", "rules", "intro", "tag", "play", "thanks", "survey", "done"];
 function show(name) {
   pauseVideo();
   for (const id of SCREENS) $(id).hidden = id !== name;
@@ -301,6 +301,7 @@ function showMenu() {
   if (session.finished) return showDone();
   if (!session.consent) return show("consent");
   const a = session.active;
+  if (session.quizPassed && BOARD_URL && !session.tagDone && !a && session.round === 0) return showTag();
   if (session.practiceDone && session.quizPassed && !a && session.round >= total()) return showSurvey(false);
   if (session.practiceDone && session.quizPassed && !a && session.round >= required()) return showThanks();
   let lead, start, extra = "";
@@ -309,9 +310,7 @@ function showMenu() {
   $("startBtn").hidden = needVideo && !session.videoWatched;
   if (!needVideo) pauseVideo();
   if (!session.practiceDone) {
-    lead = session.videoWatched
-      ? "Next, a practice game to learn the controls. It does not count, and there are no hints in it."
-      : "Watch this short video (just over a minute) on how the game works. The practice game unlocks when it finishes.";
+    lead = "";
     if (session.videoFailed) lead = "The video could not load here, so please read the Rules before the practice game.";
     start = "Start practice game";
   } else if (!session.quizPassed) {
@@ -322,17 +321,17 @@ function showMenu() {
     start = `Continue puzzle ${a.index + 1}`;
   } else {
     const n = session.round + 1;
-    lead = n === 1 ? (required() < total() ? `There are ${required()} puzzles to play, and you can do more afterwards if you like. You play each puzzle once.`
-      : `There are ${total()} puzzles. You play each one once, a single game of a few minutes.`)
-      : `Puzzle ${n - 1} finished. ${required() - n + 1} to go.`;
+    lead = n === 1 ? "" : `Puzzle ${n - 1} finished. ${required() - n + 1} to go.`;
     start = `Start puzzle ${n}`;
     extra = stakesText(stakesOf(session.order[session.round]));
   }
   $("menuLead").textContent = lead;
+  $("menuLead").hidden = !lead;
+  $("menuTitle").hidden = needVideo;      // the video opens with its own title
   $("menuStakes").textContent = extra;
   $("menuStakes").hidden = !extra;
   $("startBtn").textContent = start;
-  $("menuLater").textContent = (session.quizPassed && BOARD_URL ? `Your name on the leaderboard is ${session.boardName}. ` : "")
+  $("menuLater").textContent = (session.quizPassed && BOARD_URL ? `You appear on the leaderboard as ${session.boardName}. ` : "")
     + "You don't have to do everything in one sitting. Your progress is saved in this browser, "
     + "so you can stop and come back later on this device to carry on.";
   $("progress").hidden = !session.quizPassed;
@@ -377,9 +376,80 @@ function wireVideo() {
   };
   v.addEventListener("error", failed);
   v.querySelector("source").addEventListener("error", failed);
-  $("videoRulesBtn").addEventListener("click", () => { pauseVideo(); record("rules_open", { from: "video" }); show("rules"); });
   const r = $("rulesVideo");
   r.addEventListener("play", () => record("video_replay", { at: Math.round(r.currentTime * 10) / 10 }));
+}
+
+// ---------------------------------------------------------------- leaderboard tag
+// Three letters, arcade style. Rude or offensive combinations are not refused (which would let
+// people probe the list): the participant quietly gets their random name instead.
+const BLOCKED_TAGS = new Set(("FUK FUC FCK FKU FKN FUX FAK PHK CNT KNT CUN KUN CUM JIZ JZZ SEX SXY SXX XXX PRN " +
+  "ASS AZZ ARS TIT TTS DIK DIC DCK DIX COK COC CCK KOK PUS PSS PIS PNS VAG VAJ CLT TWT WNK NOB KNB BJS HJS ANL FAP " +
+  "SLT SLU HOE HOR WHR FAG FGT GAY NIG NGR NGA NGG KKK NAZ NZI HTL JEW KIK KYK SPC SPK SPI WOG GOK GUK PKI CHK " +
+  "RTD TRD SPZ KYS KMS RPE STD WTF STF GTF BCH SHT SUK")
+  .split(/\s+/).filter(t => t.length === 3));
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+let tagLetters = ["A", "A", "A"], tagSlot = 0;
+
+function showTag() {
+  tagLetters = (session.tagDraft || "AAA").split(""); tagSlot = 0;
+  $("tagMsg").textContent = "";
+  $("tagBtn").textContent = "Use this tag";
+  $("tagRandomBtn").hidden = false;
+  drawTag();
+  record("tag_shown");
+  show("tag");
+}
+function drawTag() {
+  $("tagSlots").replaceChildren(...tagLetters.map((ch, i) => {
+    const d = document.createElement("div");
+    d.className = "tag-slot";
+    const up = document.createElement("button"); up.className = "arrow"; up.textContent = "▲"; up.setAttribute("aria-label", `Letter ${i + 1} up`);
+    const box = document.createElement("button"); box.className = "tag-letter" + (i === tagSlot ? " on" : ""); box.textContent = ch;
+    box.setAttribute("aria-label", `Letter ${i + 1}: ${ch}`);
+    const down = document.createElement("button"); down.className = "arrow"; down.textContent = "▼"; down.setAttribute("aria-label", `Letter ${i + 1} down`);
+    up.addEventListener("click", () => { tagSlot = i; stepLetter(i, -1); });
+    down.addEventListener("click", () => { tagSlot = i; stepLetter(i, 1); });
+    box.addEventListener("click", () => { tagSlot = i; drawTag(); });
+    d.append(up, box, down);
+    return d;
+  }));
+}
+function stepLetter(i, dir) {
+  const k = LETTERS.indexOf(tagLetters[i]);
+  tagLetters[i] = LETTERS[(k + dir + 26) % 26];
+  session.tagDraft = tagLetters.join("");
+  drawTag();
+}
+function tagKey(e) {
+  if ($("tag").hidden || e.ctrlKey || e.metaKey || e.altKey) return false;
+  const k = e.key;
+  if (/^[a-z]$/i.test(k)) { tagLetters[tagSlot] = k.toUpperCase(); tagSlot = Math.min(2, tagSlot + 1); }
+  else if (k === "ArrowUp") stepLetter(tagSlot, -1);
+  else if (k === "ArrowDown") stepLetter(tagSlot, 1);
+  else if (k === "ArrowLeft" || k === "Backspace") tagSlot = Math.max(0, tagSlot - 1);
+  else if (k === "ArrowRight") tagSlot = Math.min(2, tagSlot + 1);
+  else if (k === "Enter") { submitTag(false); return true; }
+  else return false;
+  session.tagDraft = tagLetters.join("");
+  drawTag();
+  return true;
+}
+function submitTag(random) {
+  if (session.tagDone) return showMenu();
+  const tag = tagLetters.join("");
+  const blocked = !random && BLOCKED_TAGS.has(tag);
+  if (!random && !blocked) session.boardName = tag;           // otherwise keep the random name made at the start
+  session.tagDone = true;
+  record("tag_chosen", { tag: random ? null : tag, blocked, boardName: session.boardName });
+  save();
+  if (blocked) {
+    $("tagMsg").textContent = `That tag isn't available, so you'll appear as ${session.boardName}.`;
+    $("tagBtn").textContent = "Continue";
+    $("tagRandomBtn").hidden = true;
+    return;
+  }
+  showMenu();
 }
 
 function startFromMenu() {
@@ -414,12 +484,6 @@ const QUIZ = [
     options: ["20", "19.5", "19", "0.5"], answer: 1, why: "A win by 1 is the best result, so nothing is lost for the result: 20 minus the hint (0.5) is 19.5." },
   { q: "At stakes x2 you buy no hints and lose by 1. That is 2 short of a win by 1. What is your score?",
     options: ["18", "16", "20", "14"], answer: 1, why: "Each point short costs 2 at stakes x2: 20 minus 2 x 2 is 16." },
-  { q: "Can a hint ever point you to a move that makes your result worse?",
-    options: ["Yes, sometimes", "No, a hint always shows a move that keeps the best result still possible"], answer: 1,
-    why: "Hints come from the perfect computer, so they are never wrong." },
-  { q: "If a hint is expensive on one move, does that mean the move is a hard one?",
-    options: ["Yes, expensive hints are for hard moves", "No, prices are picked at random and say nothing about the move"], answer: 1,
-    why: "Prices (and moves with no hints) are picked at random, so they tell you nothing about the position." },
 ];
 
 function showQuiz() {
@@ -628,6 +692,7 @@ async function startRound(btn = $("startBtn"), messageEl = $("menuLead")) {
     table = await loadTable(opening);
   } catch (e) {
     record("error", { problem: "could not download opponent", opening, message: String(e) });
+    messageEl.hidden = false;
     messageEl.textContent = "The puzzle could not be downloaded. Please check your internet connection and try again.";
     return;
   } finally {
@@ -1327,6 +1392,7 @@ function wireInput() {
     turn(e.deltaY > 0 ? "rotate" : "rotate_back");
   }, { passive: false });
   document.addEventListener("keydown", e => {
+    if (tagKey(e)) { e.preventDefault(); return; }
     if ($("play").hidden || !$("rulesOverlay").hidden) return;
     if (e.key === "r" || e.key === "R") turn("rotate");
     else if (e.key === "f" || e.key === "F") turn("flip");
@@ -1341,6 +1407,8 @@ function wireInput() {
   $("hintCornerBtn").addEventListener("click", () => buyHint("corner"));
   $("hintFullBtn").addEventListener("click", () => buyHint("full"));
   $("quizBtn").addEventListener("click", checkQuiz);
+  $("tagBtn").addEventListener("click", () => submitTag(false));
+  $("tagRandomBtn").addEventListener("click", () => submitTag(true));
   $("moreBtn").addEventListener("click", () => { record("play_more", { puzzles: session.round }); startRound($("moreBtn"), $("thanksMore")); });
   $("finishBtn").addEventListener("click", () => showSurvey(true));
   $("surveyBtn").addEventListener("click", submitSurvey);
