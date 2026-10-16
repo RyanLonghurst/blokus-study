@@ -358,7 +358,8 @@
       <li>Some puzzles have <strong>stakes x2</strong>: then each point short costs 2 instead of 1. Hints cost the same
         either way. You are told the stakes before each puzzle starts.</li>
       <li>On your turn, the hint box shows what each hint costs <strong>for this move</strong>. Prices change from move to
-        move, and on some moves there are no hints.</li>
+        move, and on some moves there are no hints. Both are picked at random: a high price does not mean the move is
+        hard, and "no hints" does not mean it is easy.</li>
       <li><strong>Which piece?</strong> marks the piece to use. <strong>Where?</strong> rings the square the piece should
         start from. <strong>Show the move</strong> shows exactly where the piece goes.</li>
       <li>Hints are always right: they show a move that keeps the best result you can still get. They only help with the
@@ -455,6 +456,19 @@
     </div>
     <p style="margin-top: 22px"><button id="finishBtn" class="btn quiet">I'm finished with the study</button></p>
     <p id="thanksCode" style="margin-top: 28px"></p>
+  </div>
+</section>
+
+<!-- ---------------------------------------------------------------- questionnaire -->
+<section id="survey" hidden>
+  <div class="page intro">
+    <h1>Three quick questions</h1>
+    <p class="lead">Nearly done. Please answer honestly: your answers do not affect your payment.</p>
+    <div id="surveyQs"></div>
+    <label class="field-label" for="surveyComment">Any comments on the study? (optional)</label>
+    <textarea id="surveyComment" class="field" rows="3" maxlength="2000" style="max-width: 100%"></textarea>
+    <p id="surveyHint" class="form-hint" aria-live="polite"></p>
+    <div class="stack"><button id="surveyBtn" class="btn primary">Finish</button></div>
   </div>
 </section>
 

@@ -11,8 +11,8 @@ computer opponent and can pay for hints before each move.
 
 ## Design (settings at the top of experiment.js)
 
-- All 9 puzzles required, in a fixed order (`ORDER`). Setting `REQUIRED_PUZZLES` lower adds a thank-you screen part-way with the option to carry on.
-- One game per puzzle. Before each move a hint price p is drawn from 0.25, 0.5, 1, 2 points: "which piece" costs p, "where" costs p, "show the move" costs 2p. On 20% of moves there are no hints.
+- All 9 puzzles required, in a random order for each participant. Setting `REQUIRED_PUZZLES` lower adds a thank-you screen part-way with the option to carry on.
+- One game per puzzle. Before each move a hint price p is drawn from 0.25, 0.5, 1, 2 points: "which piece" costs p, "where" costs p, "show the move" costs 2p. On 30% of moves there are no hints.
 - Stakes: each puzzle counts x1 or x2 (balanced within each person, random which). Hint prices are not multiplied.
 - Score per puzzle = 20 - stakes x (points short of a win by 1) - hint costs, at least 0 (`START_POINTS`). One finished puzzle is drawn at random for payment.
 - Mid-game starts are built in but off (`START_DEPTH_SHARE`).

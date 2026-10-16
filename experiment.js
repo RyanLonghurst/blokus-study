@@ -11,7 +11,8 @@
 //   the 20-point start just keeps scores positive. A score floored at 0 should be flagged.)
 // At the end one finished puzzle is drawn at random to decide payment.
 //
-// Puzzles come in a fixed order (ORDER) and all nine are required (REQUIRED_PUZZLES).
+// Each participant gets the nine puzzles in their own random order, and all nine are required
+// (REQUIRED_PUZZLES).
 //
 // Everything is recorded in session.events and saved in the browser, so a participant can
 // close the page and carry on later. An interrupted puzzle is restored move by move with
@@ -20,8 +21,7 @@
 // ---------------------------------------------------------------- settings
 const APP_VERSION = "hints-1.0";
 const SIDES = { 311: 0, 39: 0, 230: 0, 419: 0, 243: 0, 2: 0, 41: 1, 15: 1, 6: 1 };   // 0 = Blue, 1 = Yellow
-// Fixed order for everyone: easy, hard and a Yellow puzzle come first, so the required part
-// covers a spread of difficulty. Change here if needed.
+// The nine puzzles; each participant plays them in a random order.
 const ORDER = [311, 243, 41, 230, 15, 39, 2, 419, 6];
 const REQUIRED_PUZZLES = 9;          // all nine (set lower to add a thank-you screen part-way)
 const START_POINTS = 20;             // every puzzle starts from this score
@@ -31,7 +31,8 @@ const DATA_DIR = "opponent_web/";
 // Hints: a price p is drawn for each move; "which piece" costs p, "where" costs p, the whole move 2p.
 const HINT_PRICES = [0.25, 0.5, 1, 2];
 const FULL_FACTOR = 2;
-const NO_HINT_SHARE = 0.2;            // share of moves with no hints (a clean measure of each person's skill)
+const NO_HINT_SHARE = 0.3;            // share of moves with no hints: about 14 per person, enough to measure each
+                                      // person's skill by stakes and by how complex the position is
 // Stakes: each puzzle's result is multiplied by one of these; hint prices are not.
 // Assigned so each participant gets as close to equal numbers of each as possible.
 const STAKES = [1, 2];
@@ -108,7 +109,7 @@ let returnVisit = false;
 const nowEpoch = () => performance.timeOrigin + performance.now();
 
 function newSession() {
-  const order = DEV && params.get("order") ? params.get("order").split(",").map(Number) : [...ORDER];
+  const order = DEV && params.get("order") ? params.get("order").split(",").map(Number) : shuffled(ORDER);
   return {
     format: "blokus-hints-log", version: 1, app: APP_VERSION,
     participant: randomCode(),
