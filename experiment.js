@@ -58,7 +58,7 @@ const COMPUTER_DELAY_MS = 700;
 const STORAGE_KEY = "blokus-hints-session";   // new key: saved sessions from the old version are not mixed in
 const CONTACT_KEY = "blokus-hints-contact";
 const RESEARCHER_EMAIL = "ryanlonghurst05@icloud.com";
-const CONSENT_VERSION = "hints-draft-2";
+const CONSENT_VERSION = "hints-draft-3";
 
 // DataPipe experiment IDs (pipe.jspsych.org). While empty, nothing is sent and the finish
 // screen asks participants to download their file and email it.
@@ -1303,7 +1303,7 @@ function renderResult() {
   const margin = sc[game.human] - sc[1 - game.human];
   $("resultMain").textContent = `You ${describeMargin(margin)}.`;
   if (game.kind === "practice") {
-    $("resultSub").textContent = "Play again, or go back to the menu when you are ready.";
+    $("resultSub").textContent = "Play again, or press Continue when you are ready.";
     $("resultPoints").textContent = "";
     $("againBtn").hidden = false;
     $("practiceDoneBtn").hidden = false;

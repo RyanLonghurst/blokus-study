@@ -245,33 +245,17 @@
 <section id="consent" hidden>
   <div class="page consent">
     <h1>Before you start</h1>
-    <p class="lead">Please read this information before deciding whether to take part.</p>
 
     <h2>About the study</h2>
     <p>This study is part of an undergraduate economics dissertation at the University of Edinburgh, run by Ryan Longhurst
       and supervised by [supervisor name]. It looks at how people solve puzzles in the board game Blokus, and when they
       choose to pay for hints. [Ethics approval reference.]</p>
 
-    <h2>What you will do</h2>
-    <ul>
-      <li>Play a short practice game to learn the controls, then answer a few quick questions about how points work.</li>
-      <li>Play Blokus puzzles against a computer that plays perfectly. You play each puzzle once, as a single game of a
-        few minutes. Before each move you can buy hints with points.</li>
-      <li>There are 9 puzzles, each a single game of a few minutes. The whole study takes about 30 to 40 minutes
-        including the practice game.</li>
-      <li><strong>You do not need to do it all in one go.</strong> Your progress is saved in this browser, so you can
-        stop and come back later on the same device and browser (not a private or incognito window).</li>
-      <li>The study works on a computer, tablet or phone.</li>
-    </ul>
-
     <h2>Points and the leaderboard</h2>
     <ul>
       <li>Every puzzle starts with 20 points. You lose points for every point your result falls short of the best
         possible result (a win by 1), and for any hints you buy. Some puzzles have higher stakes, where falling short
         costs double.</li>
-      <li>There is no payment. After each puzzle you see how your score ranks against everyone else who has played it,
-        and at the end your overall ranking. On the leaderboard you appear only under a three-letter tag you pick
-        (please not your initials), or a random name such as "Swift Otter" if you prefer, never your real name.</li>
     </ul>
 
     <h2>What is recorded</h2>
@@ -409,7 +393,6 @@
 <section id="tag" hidden>
   <div class="page">
     <h1>Your leaderboard tag</h1>
-    <p class="lead">Pick three letters, arcade style. This is how you appear on the leaderboard. Please don't use your initials.</p>
     <div class="tag-slots" id="tagSlots"></div>
     <p id="tagMsg" class="tag-msg" aria-live="polite"></p>
     <div class="stack">
@@ -447,7 +430,7 @@
           </div>
           <button id="againBtn" class="btn primary">Play again</button>
           <button id="nextPuzzleBtn" class="btn primary" hidden>Next</button>
-          <button id="practiceDoneBtn" class="btn" hidden>Back to menu</button>
+          <button id="practiceDoneBtn" class="btn" hidden>Continue</button>
         </div>
         <div id="hintPanel" class="hints" hidden>
           <div class="hints-head">Hints for this move</div>
