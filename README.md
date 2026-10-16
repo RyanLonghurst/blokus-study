@@ -14,16 +14,17 @@ computer opponent and can pay for hints before each move.
 - All 9 puzzles required, in a random order for each participant. Setting `REQUIRED_PUZZLES` lower adds a thank-you screen part-way with the option to carry on.
 - One game per puzzle. Before each move a hint price p is drawn from 0.25, 0.5, 1, 2 points: "which piece" costs p, "where" costs p, "show the move" costs 2p. On 30% of moves there are no hints.
 - Stakes: each puzzle counts x1 or x2 (balanced within each person, random which). Hint prices are not multiplied.
-- Score per puzzle = 20 - stakes x (points short of a win by 1) - hint costs, at least 0 (`START_POINTS`). One finished puzzle is drawn at random for payment.
+- Score per puzzle = 20 - stakes x (points short of a win by 1) - hint costs, at least 0 (`START_POINTS`). No payment: after each puzzle a leaderboard shows the participant's rank on that puzzle and the two places above and below (anonymous random names), and an overall ranking at the end. The leaderboard is a Google Sheet with the script in `leaderboard/` (setup in `leaderboard/SETUP.md`); paste its web app address into `LEADERBOARD_URL`.
 - Mid-game starts are built in but off (`START_DEPTH_SHARE`).
 
 ## Testing
 
-Add `?dev=1` for a testing bar. Options: `&order=311,41` (puzzles and order), `&puzzles=2` (required puzzles),
+Add `?dev=1` for a testing bar. Options: `&lb=URL` (leaderboard address for testing), `&order=311,41` (puzzles and order), `&puzzles=2` (required puzzles),
 `&nohint=0` (hints on every move), `&stakes=2` (all puzzles at these stakes), `&depth=1` (mid-game starts).
 
 ## Before going live
 
-1. Fill in the [square brackets] in the consent text and the payment rule.
-2. Create DataPipe experiments and put their IDs in `DATAPIPE_DATA_ID` and `DATAPIPE_CONTACT_ID`.
-3. Pilot with about 10 people: check hints are bought on roughly 20 to 40% of moves.
+1. Fill in the [square brackets] in the consent text.
+2. Set up the leaderboard (`leaderboard/SETUP.md`).
+3. Create DataPipe experiments and put their IDs in `DATAPIPE_DATA_ID` and `DATAPIPE_CONTACT_ID`.
+4. Pilot with about 10 people: check hints are bought on roughly 20 to 40% of moves.

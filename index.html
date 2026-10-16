@@ -143,6 +143,15 @@
   #scoreChange.up { color: var(--good); }
   #scoreChange.down { color: var(--warn); }
   .score-note { color: var(--muted); font-size: 14px; }
+  /* leaderboard */
+  .rank { margin-top: 12px; }
+  .rank-title { font-weight: 600; margin: 0 0 6px; }
+  .rank-table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+  .rank-table td { padding: 4px 8px; border-top: 1px solid var(--grid); }
+  .rank-table td:first-child { width: 3.5em; color: var(--muted); }
+  .rank-table td:last-child { text-align: right; }
+  .rank-table tr.me td { font-weight: 700; background: #F3EAFB; }
+  .rank-note { color: var(--muted); font-size: 14px; margin: 6px 0 0; }
 
   /* hint panel */
   .hints { background: #fff; border: 2px solid var(--hint); border-radius: 10px; padding: 10px 12px; margin-bottom: 14px; }
@@ -241,15 +250,14 @@
       <li>The study works on a computer, tablet or phone.</li>
     </ul>
 
-    <h2>Points and payment</h2>
+    <h2>Points and the leaderboard</h2>
     <ul>
       <li>Every puzzle starts with 20 points. You lose points for every point your result falls short of the best
         possible result (a win by 1), and for any hints you buy. Some puzzles have higher stakes, where falling short
         costs double.</li>
-      <li>At the end, one of your puzzles is picked at random and its points decide your payment: [payment rule, e.g. a
-        fixed amount plus an amount per point]. So every puzzle could be the one that counts.</li>
-      <li>To be paid, give your email address below. It is used only to arrange payment, is stored separately from your
-        game data, and is deleted once payment has been made. You can take part without giving it.</li>
+      <li>There is no payment. After each puzzle you see how your score ranks against everyone else who has played it,
+        and at the end your overall ranking. On the leaderboard you appear only under a random name (such as "Swift
+        Otter"), never your real name.</li>
     </ul>
 
     <h2>What is recorded</h2>
@@ -272,11 +280,6 @@
     <label class="check"><input type="checkbox" id="consentRead"> <span>I have read and understood the information above.</span></label>
     <label class="check"><input type="checkbox" id="consentAge"> <span>I am 18 or over.</span></label>
     <label class="check"><input type="checkbox" id="consentAgree"> <span>I agree to take part, and for my game data to be used as described above.</span></label>
-
-    <h2>Payment (optional)</h2>
-    <label class="field-label" for="prizeEmail">Email address</label>
-    <input class="field" type="email" id="prizeEmail" autocomplete="email" spellcheck="false">
-    <label class="check"><input type="checkbox" id="noPrize"> <span>I don't want to be paid.</span></label>
 
     <p id="consentHint" class="form-hint" aria-live="polite"></p>
     <button id="consentBtn" class="btn primary" disabled>Continue</button>
@@ -364,7 +367,8 @@
         start from. <strong>Show the move</strong> shows exactly where the piece goes.</li>
       <li>Hints are always right: they show a move that keeps the best result you can still get. They only help with the
         move you are about to make. You can buy none, one, or several.</li>
-      <li>At the end one puzzle is picked at random to decide your payment, so every puzzle counts.</li>
+      <li>After each puzzle you see where your score ranks against everyone who has played it, and at the end your
+        overall ranking.</li>
     </ul>
     <h2>Quick check</h2>
     <p>Please answer these so we know the instructions are clear.</p>
@@ -398,6 +402,7 @@
             <div id="resultMain"></div>
             <div id="resultSub"></div>
             <div id="resultPoints" class="points-line"></div>
+            <div id="rankBox" class="rank" hidden></div>
           </div>
           <button id="againBtn" class="btn primary">Play again</button>
           <button id="nextPuzzleBtn" class="btn primary" hidden>Next</button>
@@ -463,7 +468,7 @@
 <section id="survey" hidden>
   <div class="page intro">
     <h1>Three quick questions</h1>
-    <p class="lead">Nearly done. Please answer honestly: your answers do not affect your payment.</p>
+    <p class="lead">Nearly done. Please answer honestly: your answers do not affect your score.</p>
     <div id="surveyQs"></div>
     <label class="field-label" for="surveyComment">Any comments on the study? (optional)</label>
     <textarea id="surveyComment" class="field" rows="3" maxlength="2000" style="max-width: 100%"></textarea>
@@ -477,7 +482,7 @@
   <div class="page">
     <h1>All done</h1>
     <p id="doneLead" class="lead">Thank you for taking part.</p>
-    <p id="doneBonus" class="box" hidden></p>
+    <div id="doneRank" class="box rank" hidden></div>
     <p id="doneStatus" aria-live="polite"></p>
     <div id="doneFallback" hidden>
       <p>Please download your data file and email it to the researcher at <a class="researcher-email"></a>.</p>

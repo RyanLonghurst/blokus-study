@@ -9,7 +9,8 @@
 //   Score for a puzzle = 20 - stakes x (points short of a win by 1) - hint costs, at least 0.
 //   (The same as stakes x margin - hint costs plus a constant, so incentives are unchanged;
 //   the 20-point start just keeps scores positive. A score floored at 0 should be flagged.)
-// At the end one finished puzzle is drawn at random to decide payment.
+// There is no payment. After each puzzle the participant sees where their score ranks among
+// everyone who has played that puzzle (a shared leaderboard), and an overall ranking at the end.
 //
 // Each participant gets the nine puzzles in their own random order, and all nine are required
 // (REQUIRED_PUZZLES).
@@ -40,6 +41,19 @@ const STAKES = [1, 2];
 const START_DEPTH_SHARE = 0;
 const START_EXTRA_MOVES = { default: 2, 2: 1, 41: 1 };
 
+// Leaderboard: the web app address of the Google Apps Script in leaderboard/Code.gs
+// (see leaderboard/SETUP.md). While empty, no leaderboard is shown.
+const LEADERBOARD_URL = "";
+const LEADERBOARD_NEIGHBOURS = 2;    // places shown above and below the participant
+const NAME_WORDS = [
+  ["Amber", "Arctic", "Bold", "Brave", "Bright", "Calm", "Clever", "Cosmic", "Crimson", "Daring", "Dusty", "Electric",
+   "Fearless", "Gentle", "Golden", "Happy", "Jolly", "Lucky", "Mighty", "Misty", "Nimble", "Noble", "Polar", "Quick",
+   "Quiet", "Rapid", "Royal", "Rusty", "Silver", "Sly", "Sunny", "Swift", "Teal", "Witty"],
+  ["Badger", "Bear", "Beaver", "Bison", "Cheetah", "Crane", "Dolphin", "Eagle", "Falcon", "Ferret", "Fox", "Gecko",
+   "Hare", "Hawk", "Heron", "Ibex", "Koala", "Lemur", "Lynx", "Moose", "Narwhal", "Otter", "Owl", "Panda", "Panther",
+   "Puffin", "Raven", "Robin", "Seal", "Stag", "Tiger", "Walrus", "Wolf", "Yak"],
+];
+
 const COMPUTER_DELAY_MS = 700;
 const STORAGE_KEY = "blokus-hints-session";   // new key: saved sessions from the old version are not mixed in
 const CONTACT_KEY = "blokus-hints-contact";
@@ -67,6 +81,7 @@ const NO_HINT = devNum("nohint", NO_HINT_SHARE);
 const DEPTH_SHARE = devNum("depth", START_DEPTH_SHARE);
 const REQUIRED = Math.round(devNum("puzzles", REQUIRED_PUZZLES));
 const FIXED_STAKES = devNum("stakes", null);
+const BOARD_URL = (DEV && params.get("lb")) || LEADERBOARD_URL;
 const PIPE = {
   data: (DEV && params.get("pipe")) || DATAPIPE_DATA_ID,
   contact: (DEV && params.get("contactpipe")) || DATAPIPE_CONTACT_ID,
@@ -131,7 +146,8 @@ function newSession() {
     round: 0,                // puzzles finished
     active: null,            // the puzzle in progress
     results: [],             // one entry per finished puzzle
-    bonusDraw: null,
+    boardName: `${pick(NAME_WORDS[0])} ${pick(NAME_WORDS[1])}`,   // anonymous name shown on the leaderboard
+    overallRank: null,
     finished: false,
     finalSent: false,
     sentThrough: 0,
@@ -308,7 +324,8 @@ function showMenu() {
   $("menuStakes").textContent = extra;
   $("menuStakes").hidden = !extra;
   $("startBtn").textContent = start;
-  $("menuLater").textContent = "You don't have to do everything in one sitting. Your progress is saved in this browser, "
+  $("menuLater").textContent = (session.quizPassed && BOARD_URL ? `Your name on the leaderboard is ${session.boardName}. ` : "")
+    + "You don't have to do everything in one sitting. Your progress is saved in this browser, "
     + "so you can stop and come back later on this device to carry on.";
   $("progress").hidden = !session.quizPassed;
   progressBoxes($("progress"), true);
@@ -322,33 +339,17 @@ function startFromMenu() {
   startRound();
 }
 
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function checkConsentForm() {
   const ticked = ["consentRead", "consentAge", "consentAgree"].every(id => $(id).checked);
-  const noPrize = $("noPrize").checked;
-  const email = $("prizeEmail").value.trim();
-  $("prizeEmail").disabled = noPrize;
-  let hint = "";
-  if (!ticked) hint = "Please tick all three consent boxes to continue.";
-  else if (!noPrize && !email) hint = "Enter an email address to be paid, or tick the box if you don't want to be.";
-  else if (!noPrize && !EMAIL_PATTERN.test(email)) hint = "That email address doesn't look right.";
-  $("consentHint").textContent = hint;
-  $("consentBtn").disabled = hint !== "";
+  $("consentHint").textContent = ticked ? "" : "Please tick all three consent boxes to continue.";
+  $("consentBtn").disabled = !ticked;
 }
 
 function submitConsent() {
   checkConsentForm();
   if ($("consentBtn").disabled) return;
-  const prizeEntered = !$("noPrize").checked;
-  if (prizeEntered) {
-    const contact = { participant: session.participant, email: $("prizeEmail").value.trim(), given: new Date().toISOString() };
-    pendingContact = contact;
-    try { localStorage.setItem(CONTACT_KEY, JSON.stringify(contact)); } catch (e) { /* kept in memory instead */ }
-  }
-  session.consent = { version: CONSENT_VERSION, prizeEntered, time: new Date().toISOString() };
-  record("consent", { version: CONSENT_VERSION, prizeEntered });
-  $("prizeEmail").value = "";
-  sendContact();
+  session.consent = { version: CONSENT_VERSION, time: new Date().toISOString() };
+  record("consent", { version: CONSENT_VERSION, boardName: session.boardName });
   uploadLog("consent");
   showMenu();
 }
@@ -748,7 +749,76 @@ function finishGame() {
   game.roundResult = result;
   render();
   uploadLog(`round${result.round}`);
-  sendContact();
+  showRanking(result);
+}
+
+// ---------------------------------------------------------------- leaderboard
+// The score is sent to the shared leaderboard (a Google Sheet behind a small Apps Script),
+// which answers with this participant's rank on the puzzle and the places around them.
+// Testing sessions (?dev=1) are kept apart from real ones. If the leaderboard cannot be
+// reached the study carries on without it.
+function ordinal(n) {
+  const s = ["th", "st", "nd", "rd"], v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+async function boardRequest(options) {
+  try {
+    const r = options.post
+      ? await fetch(BOARD_URL, { method: "POST", body: JSON.stringify(options.post) })   // plain text body: no CORS preflight
+      : await fetch(`${BOARD_URL}?${new URLSearchParams(options.get)}`);
+    if (!r.ok) throw new Error(`status ${r.status}`);
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    return data;
+  } catch (e) {
+    record("leaderboard_failed", { message: String(e) });
+    return null;
+  }
+}
+
+function drawBoard(el, title, data, note = "") {
+  const head = document.createElement("p");
+  head.className = "rank-title";
+  head.textContent = title;
+  const table = document.createElement("table");
+  table.className = "rank-table";
+  for (const row of data.rows) {
+    const tr = document.createElement("tr");
+    if (row.me) tr.className = "me";
+    for (const text of [ordinal(row.rank), row.me ? `${row.name} (you)` : row.name, fmtPts(row.points)]) {
+      const td = document.createElement("td");
+      td.textContent = text;
+      tr.appendChild(td);
+    }
+    table.appendChild(tr);
+  }
+  const parts = [head, table];
+  if (note) { const p = document.createElement("p"); p.className = "rank-note"; p.textContent = note; parts.push(p); }
+  el.replaceChildren(...parts);
+  el.hidden = false;
+}
+
+async function showRanking(result) {
+  const box = $("rankBox");
+  if (!BOARD_URL) { box.hidden = true; return; }
+  box.hidden = false;
+  box.textContent = "Loading the leaderboard...";
+  const last = session.round >= total();
+  const data = await boardRequest({ post: {
+    participant: session.participant, name: session.boardName, opening: result.opening, points: result.points,
+    test: DEV, overall: last,
+  } });
+  if (data && data.rank) {
+    result.rank = { rank: data.rank, total: data.total };
+    if (data.overall && data.overall.rank) session.overallRank = data.overall;
+    record("leaderboard", { opening: result.opening, rank: data.rank, total: data.total, overall: data.overall ? { rank: data.overall.rank, total: data.overall.total } : null });
+    save();
+  }
+  if (!game || game.roundResult !== result) return;          // the participant has already moved on
+  if (!data || !data.rank) { box.textContent = "The leaderboard can't be reached right now. Your score is still saved."; return; }
+  drawBoard(box, `On this puzzle you are ${ordinal(data.rank)} out of ${data.total} players.`, data,
+    data.total < 5 ? "You're one of the first to play this puzzle, so the board will fill up as more people play." : "");
 }
 
 // "Next" after a puzzle: the menu for the next required puzzle, or the thank-you screen.
@@ -818,8 +888,7 @@ function showThanks() {
   $("thanksCount").textContent = `${played} of ${total()} puzzles done`;
   $("thanksMoreTitle").textContent = "Can you do more?";
   $("thanksMore").textContent = "Each puzzle is a single game of a few minutes, and every one makes the study more useful, so "
-    + (left === 1 ? "please play the last one if you can." : `please play as many of the remaining ${left} as you can.`)
-    + " Every puzzle you finish could be the one picked for your payment.";
+    + (left === 1 ? "please play the last one if you can." : `please play as many of the remaining ${left} as you can.`);
   $("thanksStakes").textContent = stakesText(stakesOf(session.order[session.round]));
   $("thanksLater").textContent = "You don't have to do them now. Your progress is saved in this browser, so you can take a break and come back later.";
   $("moreBtn").textContent = "Play the next puzzle";
@@ -843,14 +912,7 @@ function takeBreak() {
   $("breakNote").hidden = false;
 }
 
-// One finished puzzle is drawn at random to decide payment.
 function finishSession(early) {
-  if (!session.bonusDraw && session.results.length) {
-    const i = Math.floor(rand() * session.results.length);
-    const r = session.results[i];
-    session.bonusDraw = { resultIndex: i, round: r.round, opening: r.opening, points: r.points };
-    record("bonus_draw", session.bonusDraw);
-  }
   session.finished = true;
   record("session_finished", { puzzles: session.round, early });
   showDone();
@@ -860,9 +922,7 @@ async function showDone() {
   show("done");
   const n = session.round;
   $("doneLead").textContent = (n >= total() ? `You have finished all ${total()} puzzles.` : `You played ${n} puzzle${n === 1 ? "" : "s"}.`) + " Thank you for taking part.";
-  const b = session.bonusDraw;
-  $("doneBonus").hidden = !b;
-  if (b) $("doneBonus").textContent = `The puzzle picked for your payment: puzzle ${b.round}, with a score of ${fmtPts(b.points)} out of ${START_POINTS}.`;
+  showOverall();
   $("doneCode").innerHTML = `Your participant code is <span class="code">${session.participant}</span>. Keep it if you might want your data removed later.`;
   $("doneFallback").hidden = true;
   if (session.finalSent) {
@@ -874,6 +934,22 @@ async function showDone() {
     save();
     $("doneStatus").textContent = "Your results have been sent. You can close this page.";
   }
+}
+
+// Overall ranking on the finish screen: total score over all nine puzzles, among everyone
+// who has finished all nine. Fetched again if it was not ready when the last puzzle ended.
+async function showOverall() {
+  const box = $("doneRank");
+  box.hidden = true;
+  if (!BOARD_URL || session.round < total()) return;
+  if (!session.overallRank) {
+    const data = await boardRequest({ get: { action: "overall", participant: session.participant, test: DEV ? "1" : "0" } });
+    if (data && data.rank) { session.overallRank = data; save(); }
+  }
+  const o = session.overallRank;
+  if (!o) return;
+  const totalScore = session.results.reduce((t, r) => t + r.points, 0);
+  drawBoard(box, `Your total is ${fmtPts(totalScore)} out of ${START_POINTS * total()}: ${ordinal(o.rank)} out of ${o.total} players overall.`, o);
 }
 
 // ---------------------------------------------------------------- choosing and placing
@@ -1227,8 +1303,7 @@ function wireInput() {
   $("playRulesBtn").addEventListener("click", () => { record("rules_open", { from: "game" }); $("rulesOverlay").hidden = false; });
   $("rulesClose").addEventListener("click", () => { record("rules_close", { from: "game" }); $("rulesOverlay").hidden = true; });
   $("doneDownloadBtn").addEventListener("click", download);
-  for (const id of ["consentRead", "consentAge", "consentAgree", "noPrize"]) $(id).addEventListener("change", checkConsentForm);
-  $("prizeEmail").addEventListener("input", checkConsentForm);
+  for (const id of ["consentRead", "consentAge", "consentAgree"]) $(id).addEventListener("change", checkConsentForm);
   $("consentBtn").addEventListener("click", submitConsent);
   for (const a of document.querySelectorAll(".researcher-email")) {
     a.textContent = RESEARCHER_EMAIL;
