@@ -20,7 +20,7 @@
 // the same prices and hints, so reloading cannot be used to retry.
 
 // ---------------------------------------------------------------- settings
-const APP_VERSION = "hints-1.1";
+const APP_VERSION = "hints-1.2";     // 1.2: dev, inApp, move round/opening, awayMs, tail uploads
 const SIDES = { 311: 0, 39: 0, 230: 0, 419: 0, 243: 0, 2: 0, 41: 1, 15: 1, 6: 1 };   // 0 = Blue, 1 = Yellow
 // The nine puzzles; each participant plays them in a random order.
 const ORDER = [311, 243, 41, 230, 15, 39, 2, 419, 6];
@@ -45,6 +45,7 @@ const START_EXTRA_MOVES = { default: 2, 2: 1, 41: 1 };
 // (see leaderboard/SETUP.md). While empty, no leaderboard is shown.
 const LEADERBOARD_URL = "https://script.google.com/macros/s/AKfycbzeVIIv99BTbsSjBPaOmLcscXw6q1ydj6GDZDLflIsC5X__u-KlgQh-TtbihNukBJm6/exec";
 const LEADERBOARD_NEIGHBOURS = 2;    // places shown above and below the participant
+const RANK_WAIT_MS = 8000;           // the upload after a puzzle waits at most this long for the rank
 const NAME_WORDS = [
   ["Amber", "Arctic", "Bold", "Brave", "Bright", "Calm", "Clever", "Cosmic", "Crimson", "Daring", "Dusty", "Electric",
    "Fearless", "Gentle", "Golden", "Happy", "Jolly", "Lucky", "Mighty", "Misty", "Nimble", "Noble", "Polar", "Quick",
@@ -56,36 +57,39 @@ const NAME_WORDS = [
 
 const COMPUTER_DELAY_MS = 700;
 const STORAGE_KEY = "blokus-hints-session";   // new key: saved sessions from the old version are not mixed in
-const CONTACT_KEY = "blokus-hints-contact";
 const RESEARCHER_EMAIL = "ryanlonghurst05@icloud.com";
 const CONSENT_VERSION = "hints-draft-3";
 
-// DataPipe experiment IDs (pipe.jspsych.org). While empty, nothing is sent and the finish
-// screen asks participants to download their file and email it.
-const DATAPIPE_DATA_ID = "";
-const DATAPIPE_CONTACT_ID = "";
+// DataPipe experiment ID (pipe.jspsych.org; data goes to a private Zenodo deposition). While
+// empty, nothing is sent and the finish screen asks participants to download their file and email it.
+const DATAPIPE_DATA_ID = "IAvS5A40BoYi";
 const DATAPIPE_URL = "https://pipe.jspsych.org/api/data/";
 const COLOUR = ["Blue", "Yellow"];
 
-// Testing switches, only active with ?dev=1 in the address:
+// Testing switches, only active with ?dev=1 in the address, and only when the page is served from
+// this computer (localhost, 127.0.0.1): on the public site ?dev=1 is ignored, so a shared link
+// cannot switch participants into testing mode (where their data is not sent) or redirect them.
 //   &order=311,41    puzzles to play, in this order
 //   &puzzles=2       number of required puzzles before the thank-you screen
 //   &nohint=0        share of moves without hints
 //   &stakes=2        every puzzle at these stakes
 //   &depth=1         every puzzle starts mid-game
-//   &pipe=ID / &contactpipe=ID   DataPipe experiment IDs
+//   &lb=URL          leaderboard address
+//   &pipe=ID         DataPipe experiment ID: testing sessions are only sent with this
+// Testing sessions record dev: true and these switches (devParams) in the session.
 const params = new URLSearchParams(location.search);
-const DEV = params.has("dev");
+const LOCAL = /^(localhost|127\.0\.0\.1|\[::1\])$|\.localhost$/.test(location.hostname);
+const DEV = LOCAL && params.has("dev");
+const DEV_PARAMS = DEV ? Object.fromEntries(params) : null;
+// Browsers inside social media apps often forget saved progress when the app is closed.
+const IN_APP = /FBAN|FBAV|FB_IAB|Instagram|TikTok|musical_ly|BytedanceWebview|Snapchat|LinkedInApp|Twitter|Line\//i.test(navigator.userAgent);
 const devNum = (k, d) => (DEV && params.has(k) && !Number.isNaN(parseFloat(params.get(k))) ? parseFloat(params.get(k)) : d);
 const NO_HINT = devNum("nohint", NO_HINT_SHARE);
 const DEPTH_SHARE = devNum("depth", START_DEPTH_SHARE);
 const REQUIRED = Math.round(devNum("puzzles", REQUIRED_PUZZLES));
 const FIXED_STAKES = devNum("stakes", null);
 const BOARD_URL = (DEV && params.get("lb")) || LEADERBOARD_URL;
-const PIPE = {
-  data: (DEV && params.get("pipe")) || DATAPIPE_DATA_ID,
-  contact: (DEV && params.get("contactpipe")) || DATAPIPE_CONTACT_ID,
-};
+const PIPE = { data: DEV ? params.get("pipe") || "" : DATAPIPE_DATA_ID };   // never the live ID in testing
 
 const $ = id => document.getElementById(id);
 const fmtPts = x => (Math.round(x * 100) / 100).toString();
@@ -128,6 +132,8 @@ function newSession() {
   return {
     format: "blokus-hints-log", version: 1, app: APP_VERSION,
     participant: randomCode(),
+    dev: DEV, devParams: DEV_PARAMS,      // testing session (?dev=1) and its switches
+    inApp: IN_APP,                        // opened in a social media app's browser
     started: new Date().toISOString(),
     startEpoch: nowEpoch(),
     userAgent: navigator.userAgent,
@@ -161,7 +167,10 @@ function record(type, data = {}) {
   save();
 }
 
+let resetting = false;                 // testing bar's Reset: nothing may write the session back
+let otherTab = false;                  // another tab has saved this session since: this one is stale
 function save() {
+  if (resetting || otherTab) return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
   } catch (e) {
@@ -188,6 +197,11 @@ function download() {
 }
 
 // ---------------------------------------------------------------- sending data to DataPipe
+// A request made as the tab closes only survives with keepalive, and browsers refuse keepalive
+// bodies over 64 KB. A full copy of the session grows past that, so when leaving the page and
+// the full copy is too big, a tail is sent instead: the session with only the events after the
+// last full copy that arrived (fromEvent). The pipeline joins it onto that full copy.
+const KEEPALIVE_LIMIT = 60000;
 async function sendToDataPipe(experimentID, filename, text, leaving = false) {
   try {
     const body = JSON.stringify({ experimentID, filename, data: text });
@@ -195,7 +209,7 @@ async function sendToDataPipe(experimentID, filename, text, leaving = false) {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "*/*" },
       body,
-      keepalive: leaving && body.length < 60000,
+      keepalive: leaving && body.length < KEEPALIVE_LIMIT,
     });
     return { ok: r.ok, status: r.status };
   } catch (e) {
@@ -204,14 +218,24 @@ async function sendToDataPipe(experimentID, filename, text, leaving = false) {
 }
 
 async function uploadLog(label, leaving = false) {
-  if (!PIPE.data) return false;
+  if (!PIPE.data || otherTab) return false;
   session.uploads++;
-  const filename = `${session.participant}_${String(session.uploads).padStart(3, "0")}_${label}.json`;
+  // leaving with a full copy too big for keepalive (the 1000 leaves room for the upload_start event)
+  const tail = leaving && session.eventsSent > 0 && JSON.stringify(session).length > KEEPALIVE_LIMIT - 1000;
+  const filename = `${session.participant}_${String(session.uploads).padStart(3, "0")}_${tail ? "tail" : label}.json`;
   record("upload_start", { label, filename });
   session.eventsAtUpload = session.events.length;
-  const res = await sendToDataPipe(PIPE.data, filename, JSON.stringify(session), leaving);
+  const sending = session.events.length;
+  const text = tail
+    ? JSON.stringify({ ...session, format: "blokus-hints-log-tail", fromEvent: session.eventsSent, events: session.events.slice(session.eventsSent) })
+    : JSON.stringify(session);
+  const res = await sendToDataPipe(PIPE.data, filename, text, leaving);
   record(res.ok ? "upload_ok" : "upload_failed", { label, filename, status: res.status, error: res.error || null });
-  if (res.ok) { session.sentThrough = Math.max(session.sentThrough || 0, session.round); save(); }
+  if (res.ok) {
+    session.sentThrough = Math.max(session.sentThrough || 0, session.round);
+    if (!tail) session.eventsSent = Math.max(session.eventsSent || 0, sending);   // events in the newest full copy that arrived
+    save();
+  }
   return res.ok;
 }
 
@@ -236,30 +260,12 @@ async function sendWithStatus(label, statusEl, fallbackEl) {
 
 let lastLeaveUpload = 0;
 function uploadOnLeave() {
-  if (!PIPE.data || !session || !session.consent || session.finished) return;
+  if (!PIPE.data || resetting || !session || !session.consent || session.finished) return;
   const now = Date.now();
   if (now - lastLeaveUpload < 60000) return;
   if (session.events.length - (session.eventsAtUpload || 0) < 5) return;
   lastLeaveUpload = now;
   uploadLog("pause", true);
-}
-
-let pendingContact = null;
-function loadContact() {
-  try { return JSON.parse(localStorage.getItem(CONTACT_KEY)) || pendingContact; } catch (e) { return pendingContact; }
-}
-let contactSending = false;
-async function sendContact() {
-  const contact = loadContact();
-  if (!contact || !PIPE.contact || contactSending) return;
-  contactSending = true;
-  const res = await sendToDataPipe(PIPE.contact, `${contact.participant}_contact_${Date.now()}.json`, JSON.stringify(contact));
-  contactSending = false;
-  record(res.ok ? "contact_sent" : "contact_failed", { status: res.status, error: res.error || null });
-  if (res.ok) {
-    pendingContact = null;
-    try { localStorage.removeItem(CONTACT_KEY); } catch (e) { /* ignore */ }
-  }
 }
 
 // ---------------------------------------------------------------- screens
@@ -335,6 +341,8 @@ function showMenu() {
     + "You don't have to do everything in one sitting. Your progress is saved in this browser, "
     + "so you can stop and come back later on this device to carry on.";
   $("progress").hidden = !session.quizPassed;
+  $("dataNote").hidden = session.round > 0 || !!a;          // before the first puzzle only
+  $("inAppNote").hidden = !IN_APP;
   progressBoxes($("progress"), true);
   show("menu");
   prefetchAhead();
@@ -468,7 +476,7 @@ function submitConsent() {
   checkConsentForm();
   if ($("consentBtn").disabled) return;
   session.consent = { version: CONSENT_VERSION, time: new Date().toISOString() };
-  record("consent", { version: CONSENT_VERSION, boardName: session.boardName });
+  record("consent", { version: CONSENT_VERSION, boardName: session.boardName, dev: DEV });
   uploadLog("consent");
   showMenu();
 }
@@ -548,30 +556,33 @@ async function getManifest() {
   return manifest;
 }
 
+// Each piece is written straight into one buffer of the size the manifest gives, so a phone
+// never holds the file twice (the largest is 44 MB).
 async function downloadParts(opening, urls, total) {
   progress[opening] = { loaded: 0, total };
-  const pieces = [];
+  const joined = new Uint8Array(total);
+  let at = 0;
+  const put = chunk => {
+    if (at + chunk.length > total) throw new Error("Puzzle file is larger than expected.");
+    joined.set(chunk, at);
+    at += chunk.length;
+    progress[opening].loaded = at;
+  };
   for (const url of urls) {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Could not download ${url} (${response.status}).`);
     if (!response.body || !response.body.getReader) {           // older browsers: no progress
-      const buf = new Uint8Array(await response.arrayBuffer());
-      pieces.push(buf);
-      progress[opening].loaded += buf.length;
+      put(new Uint8Array(await response.arrayBuffer()));
       continue;
     }
     const reader = response.body.getReader();
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
-      pieces.push(value);
-      progress[opening].loaded += value.length;
+      put(value);
     }
   }
-  const joined = new Uint8Array(pieces.reduce((n, p) => n + p.length, 0));
-  let at = 0;
-  for (const p of pieces) { joined.set(p, at); at += p.length; }
-  progress[opening].loaded = progress[opening].total = joined.length;
+  if (at !== total) throw new Error("Puzzle file is incomplete.");
   return joined.buffer;
 }
 
@@ -596,6 +607,10 @@ async function prefetchAhead() {
   prefetching = true;
   try {
     const start = session.active ? session.active.index : session.round;
+    // Keep only the current and next puzzles in memory: all nine together are 147 MB, enough to
+    // make a phone reload the tab. (A puzzle being played keeps its own copy until it ends.)
+    const keep = session.order.slice(start, start + 2).map(String);
+    for (const o of Object.keys(tables)) if (!keep.includes(o)) { delete tables[o]; delete progress[o]; }
     for (const opening of session.order.slice(start, start + 2)) {
       try { await loadTable(opening); } catch (e) { break; }   // a failure is retried when the puzzle starts
     }
@@ -804,7 +819,7 @@ function computerTurn() {
     state.play(reply);
     game.lastComputer = reply;
     if (game.kind === "round") session.active.moves.push(reply);
-    record("move", { by: "computer", player, action: reply });
+    record("move", { by: "computer", ...(game.kind === "round" ? { round: session.active.index + 1, opening: game.opening } : {}), player, action: reply });
     game.busy = false;
     if (!state.gameOver && state.current !== game.human) {   // participant is out: computer moves again
       game.busy = true;
@@ -823,14 +838,15 @@ function participantMove(action, piece, orientation) {
   const info = game.info;
   const value = info ? info.values.get(action) : null;
   const cost = info ? info.best - value : null;
-  record("move", { by: "participant", player: state.current, action, piece, orientation, input: inputKind, ply, value, cost });
   const a = session.active, d = a.pending || { ply, noHints: true, price: null, bought: [] };
+  record("move", { by: "participant", round: a.index + 1, opening: a.opening, player: state.current, action, piece, orientation, input: inputKind, ply, value, cost });
   a.decisions.push({
     ply, noHints: d.noHints, price: d.price, bought: d.bought.map(b => b.kind), hintCost: d.bought.reduce((t, b) => t + b.cost, 0),
     legal: info ? info.legal : null, good: info ? info.good : null, best: info ? info.best : null,
     hintMove: info ? info.move : null, chosen: action, value, cost,
     followedFull: d.bought.some(b => b.kind === "full") ? action === info.move : null,
     thinkMs: d.shownAt != null ? Math.round(nowEpoch() - session.startEpoch - d.shownAt) : null,
+    awayMs: d.awayMs || 0,      // part of thinkMs when the page was closed (reloads)
   });
   a.pending = null;
   a.moves.push(action);
@@ -862,8 +878,10 @@ function finishGame() {
   record("round_end", result);
   game.roundResult = result;
   render();
-  uploadLog(`round${result.round}`);
-  showRanking(result);
+  // The copy sent after a puzzle waits (in the background, at most RANK_WAIT_MS) for the
+  // leaderboard rank, so the rank is in it. The participant can move on meanwhile.
+  const ranked = showRanking(result);
+  Promise.race([ranked, new Promise(r => setTimeout(r, RANK_WAIT_MS))]).then(() => uploadLog(`round${result.round}`));
 }
 
 // ---------------------------------------------------------------- leaderboard
@@ -1433,6 +1451,14 @@ function wireInput() {
   window.addEventListener("blur", () => record("window_blur"));
   window.addEventListener("focus", () => record("window_focus"));
   window.addEventListener("pagehide", () => save());
+  // The same session open in two tabs would overwrite itself, and send copies that contradict
+  // each other. When another tab saves it, this tab stops saving and sending and says so.
+  window.addEventListener("storage", e => {
+    if (e.key !== STORAGE_KEY || e.newValue === null || resetting || otherTab) return;
+    otherTab = true;
+    pauseVideo();
+    $("otherTab").hidden = false;
+  });
 }
 
 // No zooming on phones. Safari on iPhone ignores user-scalable=no in the viewport tag,
@@ -1455,26 +1481,34 @@ function main() {
   const saved = load();
   session = saved || newSession();
   returnVisit = !!saved && session.practiceDone && !session.finished;
-  record("page_load", { resumed: !!saved });
+  // Time the page was closed: from the last event saved to now. Added to the decision on
+  // screen (if any), so its think time can leave it out.
+  const awayMs = saved && session.events.length ? Math.round(nowEpoch() - session.startEpoch - session.events[session.events.length - 1].t) : null;
+  if (awayMs && session.active && session.active.pending) session.active.pending.awayMs = (session.active.pending.awayMs || 0) + awayMs;
+  if (DEV && !session.dev) { session.dev = true; session.devParams = DEV_PARAMS; }   // a later visit in testing mode
+  record("page_load", { resumed: !!saved, dev: DEV, awayMs, inApp: IN_APP });
   if (!storageOk) $("storageNote").hidden = false;
   if (saved && session.active) record("round_interrupted", { round: session.active.index + 1, opening: session.active.opening });
   if (session.finished) showDone();
   else if (!session.consent) show("consent");
   else showMenu();
-  prefetchAhead();          // start downloading straight away, even on the consent page
-  if (session.consent) sendContact();
+  // Puzzle files (up to 44 MB each) download only after consent, so visitors who just look at
+  // the first page do not use up the site's bandwidth. The video, practice and questions give
+  // the first puzzle time to arrive.
+  if (session.consent) prefetchAhead();
 
   if (DEV) {
     $("devbar").hidden = false;
     $("devReset").addEventListener("click", () => {
-      try { localStorage.removeItem(STORAGE_KEY); localStorage.removeItem(CONTACT_KEY); } catch (e) { /* ignore */ }
+      resetting = true;
+      try { localStorage.removeItem(STORAGE_KEY); } catch (e) { /* ignore */ }
       location.reload();
     });
     $("devDownload").addEventListener("click", download);
     $("devSkipVideo").addEventListener("click", () => { videoDone("dev_skip"); showMenu(); });
   }
   // read-only view for automated tests
-  window.blokusTest = { get game() { return game; }, get selected() { return selected; }, get session() { return session; }, anchorOf, orientationIndex };
+  if (DEV) window.blokusTest = { get game() { return game; }, get selected() { return selected; }, get session() { return session; }, anchorOf, orientationIndex };
 }
 
 main();

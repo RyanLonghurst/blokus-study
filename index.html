@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Blokus puzzles</title>
+<!-- link previews when the address is shared on social media and in messages -->
+<meta name="description" content="Nine short Blokus puzzles against a perfect computer opponent, with hints you can buy. Part of an economics dissertation study at the University of Edinburgh.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Blokus puzzles">
+<meta property="og:description" content="Nine short Blokus puzzles against a perfect computer opponent, with hints you can buy. Part of an economics dissertation study at the University of Edinburgh.">
+<meta property="og:url" content="https://ryanlonghurst.github.io/blokus-study/">
+<meta property="og:image" content="https://ryanlonghurst.github.io/blokus-study/tutorial_poster.jpg">
+<meta name="twitter:card" content="summary_large_image">
 <style>
   /* colours and proportions taken from blokus_game.py */
   :root {
@@ -303,6 +311,10 @@
     </div>
     <p id="menuLater" class="menu-later"></p>
     <p id="storageNote" class="note" hidden>This browser is not saving your progress. Please keep this page open until you have finished.</p>
+    <p id="inAppNote" class="menu-later" hidden>You're using the browser inside another app, which may forget your progress
+      if you close it. If you might take a break, open this page in Safari or Chrome instead (look for
+      "Open in browser" in the app's menu).</p>
+    <p id="dataNote" class="menu-later" hidden>The puzzles download about 160 MB in total, so Wi-Fi is best.</p>
   </div>
 </section>
 
@@ -351,6 +363,14 @@
     <p style="margin-top: 28px"><button id="rulesBack" class="btn primary">Back</button></p>
   </div>
 </section>
+<div id="otherTab" class="overlay" hidden>
+  <div class="page">
+    <h2>The study is open in another tab</h2>
+    <p>Your progress is being saved there, so please carry on in that tab and close this one.</p>
+    <p>To carry on here instead, reload this page.</p>
+  </div>
+</div>
+
 <div id="rulesOverlay" class="overlay" hidden>
   <div class="page rules">
     <h1>Rules</h1>

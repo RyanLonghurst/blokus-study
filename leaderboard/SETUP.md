@@ -27,6 +27,14 @@ Open the study with `?dev=1`, play a puzzle, and a leaderboard should appear und
 Rows from testing sessions are marked `TRUE` in the `test` column and are never mixed with real
 players. You can delete test rows from the sheet at any time.
 
+## What the script accepts
+
+The web app address is public, so anyone could send to it. The script only accepts what the study page
+can send: a known puzzle, a score from 0 to 20 in steps of 0.25, and a name that is either a three-letter
+tag (not on the blocked list) or one of the page's random "Word Animal" names. It can't tell a real score
+from a made-up one, so keep an eye on the sheet during recruitment and delete any rows that look fake.
+Keep the Google Sheet itself private (don't share it).
+
 ## If you change Code.gs later
 
 Use **Deploy > Manage deployments**, click the pencil icon, choose **Version: New version** and

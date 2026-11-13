@@ -20,12 +20,29 @@ computer opponent and can pay for hints before each move.
 
 ## Testing
 
-Add `?dev=1` for a testing bar. Options: `&lb=URL` (leaderboard address for testing), `&order=311,41` (puzzles and order), `&puzzles=2` (required puzzles),
-`&nohint=0` (hints on every move), `&stakes=2` (all puzzles at these stakes), `&depth=1` (mid-game starts).
+Add `?dev=1` for a testing bar. It works only when the page is served from your own computer (localhost or
+127.0.0.1, e.g. `python -m http.server`); on the public site `?dev=1` is ignored, so a shared link can't put
+participants into testing mode. Options: `&lb=URL` (leaderboard address for testing), `&order=311,41` (puzzles and order), `&puzzles=2` (required puzzles),
+`&nohint=0` (hints on every move), `&stakes=2` (all puzzles at these stakes), `&depth=1` (mid-game starts),
+`&pipe=ID` (DataPipe experiment to send testing data to). A testing session is never sent to the live `DATAPIPE_DATA_ID`:
+without `&pipe` it is not sent at all. It is marked in the data (`dev: true`, the switches in `devParams`, and `dev` on the
+`page_load` and `consent` events), and on the leaderboard (test column). The testing bar's Reset session starts a new session.
+
+## Data
+
+Each participant's whole session (`session` in `experiment.js`: settings, results, every event) is saved in the browser
+and sent to DataPipe as a full copy after consent, after each puzzle (once its leaderboard rank is in, or after 8 seconds)
+and at the end, and when the page is hidden. Closing the tab can only send under about 60 KB, so if the full copy is
+bigger then, a tail is sent instead (`CODE_NNN_tail.json`: only the events since the last full copy that arrived,
+from `fromEvent`). Move events name their puzzle (`round`, `opening`); each decision's `awayMs` is the part of
+`thinkMs` when the page was closed (reloads).
 
 ## Before going live
 
 1. Fill in the [square brackets] in the consent text.
 2. Set up the leaderboard (`leaderboard/SETUP.md`).
-3. Create DataPipe experiments and put their IDs in `DATAPIPE_DATA_ID` and `DATAPIPE_CONTACT_ID`.
+3. DataPipe: done. Experiment `IAvS5A40BoYi` ("Blokus hints study") saves to a private Zenodo draft
+   (DataPipe no longer writes to OSF after 16 November 2026). Validation requires the `participant` and `events`
+   fields, JSON only; no session limit (each participant sends many files). Don't add or delete files in the
+   Zenodo draft while collecting. The consent text must name Zenodo, not OSF.
 4. Pilot with about 10 people: check hints are bought on roughly 20 to 40% of moves.
