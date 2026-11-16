@@ -39,7 +39,8 @@ from `fromEvent`). Move events name their puzzle (`round`, `opening`); each deci
 
 ## Before going live
 
-1. Fill in the [square brackets] in the consent text.
+1. Consent text: done. The approved information sheet and consent form open from two buttons on the first
+   screen, with one box to agree (`CONSENT_VERSION` hints-v1). Changing their wording needs an ethics amendment.
 2. Set up the leaderboard (`leaderboard/SETUP.md`).
 3. DataPipe: done. Experiment `IAvS5A40BoYi` ("Blokus hints study") saves to a private Zenodo draft
    (DataPipe no longer writes to OSF after 16 November 2026). Validation requires the `participant` and `events`

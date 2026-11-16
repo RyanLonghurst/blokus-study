@@ -57,8 +57,8 @@ const NAME_WORDS = [
 
 const COMPUTER_DELAY_MS = 700;
 const STORAGE_KEY = "blokus-hints-session";   // new key: saved sessions from the old version are not mixed in
-const RESEARCHER_EMAIL = "ryanlonghurst05@icloud.com";
-const CONSENT_VERSION = "hints-draft-3";
+const RESEARCHER_EMAIL = "s2479036@ed.ac.uk";
+const CONSENT_VERSION = "hints-v1";   // approved wording, one box for the information sheet and consent form
 
 // DataPipe experiment ID (pipe.jspsych.org; data goes to a private Zenodo deposition). While
 // empty, nothing is sent and the finish screen asks participants to download their file and email it.
@@ -467,9 +467,27 @@ function startFromMenu() {
 }
 
 function checkConsentForm() {
-  const ticked = ["consentRead", "consentAge", "consentAgree"].every(id => $(id).checked);
-  $("consentHint").textContent = ticked ? "" : "Please tick all three consent boxes to continue.";
+  const ticked = $("consentAgree").checked;
+  $("consentHint").textContent = ticked ? "" : "Please tick the box to continue.";
   $("consentBtn").disabled = !ticked;
+}
+
+// The information sheet and the consent form open over the consent page. Closing one puts
+// the keyboard back on the button that opened it.
+const CONSENT_DOCS = { infoSheetBtn: "infoSheet", consentFormBtn: "consentForm" };
+let docOpener = null;
+function openDoc(btn) {
+  const doc = $(CONSENT_DOCS[btn.id]);
+  docOpener = btn;
+  doc.hidden = false;
+  doc.scrollTop = 0;
+  doc.querySelector(".doc-close").focus();
+}
+function closeDocs() {
+  if (!docOpener) return;
+  for (const id of Object.values(CONSENT_DOCS)) $(id).hidden = true;
+  docOpener.focus();
+  docOpener = null;
 }
 
 function submitConsent() {
@@ -1007,7 +1025,7 @@ function submitSurvey() {
   finishSession(surveyEarly);
 }
 
-// ---------------------------------------------------------------- thanks, finish, payment draw
+// ---------------------------------------------------------------- thanks, finish
 function showThanks() {
   const played = session.round, left = total() - played;
   const back = returnVisit;
@@ -1438,7 +1456,12 @@ function wireInput() {
   $("playRulesBtn").addEventListener("click", () => { record("rules_open", { from: "game" }); $("rulesOverlay").hidden = false; });
   $("rulesClose").addEventListener("click", () => { record("rules_close", { from: "game" }); $("rulesOverlay").hidden = true; });
   $("doneDownloadBtn").addEventListener("click", download);
-  for (const id of ["consentRead", "consentAge", "consentAgree"]) $(id).addEventListener("change", checkConsentForm);
+  $("consentAgree").addEventListener("change", checkConsentForm);
+  for (const [btn, id] of Object.entries(CONSENT_DOCS)) {
+    $(btn).addEventListener("click", () => openDoc($(btn)));
+    $(id).addEventListener("click", e => { if (e.target === $(id) || e.target.closest(".doc-close")) closeDocs(); });
+  }
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeDocs(); });
   $("consentBtn").addEventListener("click", submitConsent);
   for (const a of document.querySelectorAll(".researcher-email")) {
     a.textContent = RESEARCHER_EMAIL;

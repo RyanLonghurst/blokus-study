@@ -71,6 +71,16 @@
   .consent ul, .rules ul, .intro ul { padding-left: 22px; margin: 0; }
   .check { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 10px; cursor: pointer; }
   .check input { width: 18px; height: 18px; margin-top: 3px; flex: none; }
+  /* consent: the two documents open over the page */
+  .docs { margin: 22px 0 26px; }
+  .doc-top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 10px; }
+  .doc-top .doc-kind { margin: 0; color: var(--muted); font-size: 14px; letter-spacing: .04em; text-transform: uppercase; }
+  .page.doc h1 { font-size: 1.5rem; line-height: 1.25; margin-bottom: 14px; }
+  .doc a { color: var(--ink); }
+  .doc-table { border-collapse: collapse; width: 100%; font-size: 15px; margin: 0 0 12px; }
+  .doc-table th, .doc-table td { text-align: left; vertical-align: top; padding: 6px 10px 6px 0; border-top: 1px solid var(--grid); }
+  .doc-table th { border-top: 0; font-weight: 600; }
+  .statements li { margin-bottom: 10px; }
   .field-label { display: block; font-weight: 600; margin: 4px 0 4px; }
   .field { font: inherit; width: 100%; max-width: 380px; padding: 8px 10px; border: 2px solid var(--grid); border-radius: 8px; background: #fff; margin-bottom: 12px; }
   .field:focus { outline: none; border-color: var(--ink); }
@@ -248,47 +258,212 @@
 </div>
 
 <!-- ---------------------------------------------------------------- consent -->
-<!-- EDIT: make this wording match the approved ethics application.
-     Everything in [square brackets] still needs filling in. -->
+<!-- Approved wording (ethics application, November 2026), CONSENT_VERSION "hints-v1".
+     The information sheet and the consent form open from two buttons; one box agrees to both.
+     Do not change the wording of either document without an amendment. -->
 <section id="consent" hidden>
   <div class="page consent">
     <h1>Before you start</h1>
+    <p class="lead">A research study for an undergraduate economics dissertation at the University of Edinburgh.</p>
+    <p>You play nine short Blokus puzzles against a computer, and before each move you can spend points on hints.
+      Taking part is voluntary and open to anyone aged 18 or over. There is no payment or prize.</p>
+    <p>Please read both documents before deciding whether to take part.</p>
 
-    <h2>About the study</h2>
-    <p>This study is part of an undergraduate economics dissertation at the University of Edinburgh, run by Ryan Longhurst
-      and supervised by [supervisor name]. It looks at how people solve puzzles in the board game Blokus, and when they
-      choose to pay for hints. [Ethics approval reference.]</p>
+    <div class="stack docs">
+      <button id="infoSheetBtn" class="btn" aria-haspopup="dialog">Participant information sheet</button>
+      <button id="consentFormBtn" class="btn" aria-haspopup="dialog">Consent form</button>
+    </div>
 
-    <h2>Points and the leaderboard</h2>
-    <ul>
-      <li>Every puzzle starts with 20 points. You lose points for every point your result falls short of the best
-        possible result (a win by 1), and for any hints you buy. Some puzzles have higher stakes, where falling short
-        costs double.</li>
-    </ul>
-
-    <h2>What is recorded</h2>
-    <ul>
-      <li>Every move you make and when you make it, the hints you buy, your answers to the questions, the pieces you pick
-        up and turn, and when this page is in the background. Also your browser type and screen size.</li>
-      <li>Your name is not recorded. Your games are saved under a random code and stored on the Open Science Framework
-        (OSF). [Who can access the data, how long it is kept, and whether anonymised data will be shared.]</li>
-    </ul>
-
-    <h2>Your rights</h2>
-    <ul>
-      <li>Taking part is voluntary. You can stop at any time by closing this page.</li>
-      <li>If you later want your data removed, email the researcher at
-        <a class="researcher-email"></a> with the participant code shown at the end of the study.</li>
-      <li>If you do not want to take part, simply close this page. Nothing is sent unless you agree below.</li>
-    </ul>
-
-    <h2>Consent</h2>
-    <label class="check"><input type="checkbox" id="consentRead"> <span>I have read and understood the information above.</span></label>
-    <label class="check"><input type="checkbox" id="consentAge"> <span>I am 18 or over.</span></label>
-    <label class="check"><input type="checkbox" id="consentAgree"> <span>I agree to take part, and for my game data to be used as described above.</span></label>
+    <label class="check"><input type="checkbox" id="consentAgree"> <span>I am 18 or over. I have read the participant
+      information sheet and the consent form, I confirm every statement in the consent form, and I agree to take part
+      in this study.</span></label>
 
     <p id="consentHint" class="form-hint" aria-live="polite"></p>
     <button id="consentBtn" class="btn primary" disabled>Continue</button>
+    <p class="menu-later">If you do not want to take part, close this page: nothing is sent.</p>
+  </div>
+
+  <!-- ---- participant information sheet -->
+  <div id="infoSheet" class="overlay" role="dialog" aria-modal="true" aria-labelledby="infoSheetTitle" hidden>
+    <div class="page consent doc">
+      <div class="doc-top">
+        <p class="doc-kind">Participant information sheet</p>
+        <button class="link-btn doc-close">Close</button>
+      </div>
+      <h1 id="infoSheetTitle">When is advice worth paying for? An experiment on costly information acquisition</h1>
+      <p>Researcher: Ryan Longhurst, undergraduate student, School of Economics, University of Edinburgh
+        (<a class="researcher-email"></a>)</p>
+      <p>Supervisor: Dr Dimitri Migrow, School of Economics, University of Edinburgh
+        (<a href="mailto:dimitri.migrow@ed.ac.uk">dimitri.migrow@ed.ac.uk</a>)</p>
+      <p>My name is Ryan Longhurst, and I am inviting you to take part in a research study for my economics
+        dissertation. Before you decide, please read this information so you know why the research is being done and
+        what it involves. Please contact me if anything is unclear.</p>
+      <p>This information sheet and the consent form both open from the first screen of the study.</p>
+
+      <h2>What is the purpose of the study?</h2>
+      <p>This study is part of my undergraduate dissertation in economics. Many decisions involve paying for
+        information before acting, such as paying for advice or a report. The study looks at whether people buy
+        information when it is worth more than its price. You play short puzzles in the board game Blokus against a
+        computer that plays perfectly, and before each move you can spend points on hints. Because the game has been
+        solved, the exact value of every hint is known.</p>
+
+      <h2>Why have I been invited to take part?</h2>
+      <p>The study is open to anyone aged 18 or over. You have received the link from me or from someone who knows me.
+        You do not need to have played Blokus before.</p>
+
+      <h2>Do I have to take part?</h2>
+      <p>No. Taking part is entirely voluntary. You can stop at any time, without giving a reason, by closing the page.
+        Nothing is sent until you have ticked the consent box and pressed Continue.</p>
+      <p>There is no payment, prize or reward for taking part. The points in the game have no monetary value; they only
+        decide your place on the leaderboard.</p>
+
+      <h2>What will happen if I take part?</h2>
+      <ul>
+        <li>You read this information and the consent form, and tick the consent box.</li>
+        <li>You watch a short tutorial video (77 seconds, with captions) and play one practice game.</li>
+        <li>You answer two quick questions on how the scoring works.</li>
+        <li>You choose a three-letter tag to appear on the leaderboard, or take a random name such as "Swift Otter".
+          Please do not use your initials or any part of your name as your tag.</li>
+        <li>You play nine puzzles, one game each, against the computer. Each puzzle starts with 20 points. You lose
+          points for every point your result falls short of the best possible result (a win by 1), and for any hints
+          you buy. Hint prices are chosen at random before each move, and on some moves no hints are offered. Some
+          puzzles count double.</li>
+        <li>After each puzzle you see your rank on that puzzle among everyone who has played it, with the two places
+          above and below you. At the end you see your overall ranking.</li>
+        <li>You answer three short questions (how much Blokus you had played, whether you had played these puzzles
+          before, and whether anyone helped you), with an optional comment box. Please do not put your name or other
+          personal details in the comment.</li>
+      </ul>
+      <p>Each puzzle takes a few minutes. There is no time limit, and you do not have to finish in one sitting: your
+        progress is saved in your browser on your device, and you can come back later.</p>
+      <p>The puzzles download about 160 MB in total, so Wi-Fi is best.</p>
+
+      <h2>What are the possible benefits of taking part?</h2>
+      <p>There is no direct benefit to you, apart from the puzzles themselves. The results will help us understand how
+        people decide when information is worth paying for.</p>
+
+      <h2>What are the possible risks of taking part?</h2>
+      <p>There are no significant risks. The computer plays perfectly, so you may lose some puzzles, which some people
+        find frustrating. Your scores are compared with other players on the leaderboard, but only under your tag or
+        random name. You can stop whenever you like.</p>
+
+      <h2>What happens if I decide to withdraw?</h2>
+      <p>You can stop at any time by closing the page. Data from puzzles you finished before stopping has already been
+        sent and will be kept and used, unless you ask for it to be removed.</p>
+      <p>On the last screen of the study you are shown a six-character participant code. Please keep it. To have your
+        data removed, email me with your code before 28 February 2027. Your data files and your rows on the leaderboard
+        will then be deleted. After that date the data will have been anonymised and combined for analysis, so it can
+        no longer be removed. Because I do not know who you are, I cannot find your data without your code.</p>
+
+      <h2>Data protection and confidentiality</h2>
+      <p><strong>Who is responsible for your data.</strong> The University of Edinburgh, represented by me, is
+        responsible for your data. Your data is used for research under the lawful basis of public task. The
+        University's <a href="https://data-protection.ed.ac.uk/privacy-notice-research" target="_blank" rel="noopener">privacy
+        notice for research participants</a> explains this and your rights.</p>
+      <p><strong>What is recorded.</strong> You are not asked for your name, email address or any contact details. Your
+        data is saved under a random participant code. The study records:</p>
+      <ul>
+        <li>every move you make and when, the hints you buy, the pieces you pick up and turn, and when the page is in
+          the background or closed;</li>
+        <li>your answers to the scoring questions and the closing questions, and your comment if you write one;</li>
+        <li>your leaderboard tag or random name, and your scores and ranks;</li>
+        <li>your browser type, screen size, whether your device has a touch screen, your time zone offset, and whether
+          you opened the page inside a social media app's browser. Browser type, screen size and time zone are used
+          only to check whether the same device has taken part twice (everyone gets the same puzzles); touch support
+          and in-app browser use are used only to check data quality.</li>
+      </ul>
+      <p>This data is pseudonymous, not anonymous: it is linked by your participant code. It will not be combined with
+        any other information about you; the only other data used is the computer's exact value for each move, which is
+        not about you. The services below can see your device's IP address when your browser connects to them; the
+        study itself does not record it.</p>
+      <p><strong>Saved on your device.</strong> Your progress is saved in your browser's local storage on your own
+        device, so you can come back later. It stays there until you clear your browser's site data. The study uses no
+        cookies, analytics or advertising.</p>
+      <p><strong>Where your data goes.</strong></p>
+      <table class="doc-table">
+        <thead><tr><th>Service</th><th>What it does</th><th>What it receives</th></tr></thead>
+        <tbody>
+          <tr><td>GitHub Pages (GitHub, United States)</td><td>Hosts the study page</td>
+            <td>Your IP address and browser details when the page loads</td></tr>
+          <tr><td>DataPipe (jsPsych project)</td><td>Passes your data files on to storage</td>
+            <td>Your data files and IP address</td></tr>
+          <tr><td>Zenodo (run by CERN, Switzerland)</td>
+            <td>Stores your data files in a private, unpublished record that only I can open</td>
+            <td>Your data files</td></tr>
+          <tr><td>Google Sheets (Google, United States)</td>
+            <td>Runs the leaderboard, in a private sheet that only I can open</td>
+            <td>Your participant code, leaderboard name, puzzle, score and the time; your IP address</td></tr>
+        </tbody>
+      </table>
+      <p>If sending your data fails, the page asks you to download your data file and email it to me. If you do, your
+        email address will be deleted once your file is saved and will not be used for anything else.</p>
+      <p><strong>Who can see your data.</strong> Only me. Other participants see only your tag or random name and your
+        scores. Your comment and tag are kept apart from the analysis data, because they could identify you.</p>
+      <p><strong>How long it is kept.</strong> The Zenodo record will never be published while it contains participant
+        codes. The leaderboard sheet will be deleted when data collection ends. The research data will be kept securely
+        until the end of the project (when my dissertation has been marked) and then deleted.</p>
+      <p><strong>Your rights.</strong> You have the right to access, correct or erase your data, or to object to its
+        use. Because the data is pseudonymous, I can only find yours with your participant code. Some rights may be
+        limited once the data has been anonymised. To use these rights, contact me, or the University's Data Protection
+        Officer at <a href="mailto:dpo@ed.ac.uk">dpo@ed.ac.uk</a>.</p>
+
+      <h2>International data transfers</h2>
+      <p>Some of the services above are based outside the UK: GitHub and Google in the United States, and Zenodo at
+        CERN in Switzerland. Your data may therefore be transferred outside the UK.</p>
+
+      <h2>What will happen with the results of this study?</h2>
+      <p>The results will be written up in my undergraduate dissertation and may be presented within the School of
+        Economics. Only overall results will be reported. No individual will be identifiable, and tags, random names,
+        participant codes and comments will not be published.</p>
+
+      <h2>Who can I contact?</h2>
+      <p>If you have any questions about the study, please contact me at <a class="researcher-email"></a>.</p>
+      <p>If you wish to make a complaint about the study, please contact my supervisor, Dr Dimitri Migrow, at
+        <a href="mailto:dimitri.migrow@ed.ac.uk">dimitri.migrow@ed.ac.uk</a>. Please quote the study title and the date
+        you took part. You can also contact the University's Data Protection Officer at
+        <a href="mailto:dpo@ed.ac.uk">dpo@ed.ac.uk</a>. If you are not satisfied with how your data is handled, you can
+        complain to the Information Commissioner's Office
+        (<a href="https://ico.org.uk" target="_blank" rel="noopener">ico.org.uk</a>).</p>
+      <p>If the study changes in a way that affects you, the change will be shown on the study page.</p>
+      <p>You can get this information in large print or other formats on request from me.</p>
+
+      <p style="margin-top: 28px"><button class="btn primary doc-close">Back</button></p>
+    </div>
+  </div>
+
+  <!-- ---- consent form -->
+  <div id="consentForm" class="overlay" role="dialog" aria-modal="true" aria-labelledby="consentFormTitle" hidden>
+    <div class="page consent doc">
+      <div class="doc-top">
+        <p class="doc-kind">Participant consent form</p>
+        <button class="link-btn doc-close">Close</button>
+      </div>
+      <h1 id="consentFormTitle">When is advice worth paying for? An experiment on costly information acquisition</h1>
+      <p>Researcher: Ryan Longhurst (<a class="researcher-email"></a>). Supervisor: Dr Dimitri Migrow
+        (<a href="mailto:dimitri.migrow@ed.ac.uk">dimitri.migrow@ed.ac.uk</a>). School of Economics, University of
+        Edinburgh.</p>
+      <p>By ticking the box on the first screen and pressing Continue, you confirm every statement below. The study
+        cannot start until the box is ticked, and no data is sent before consent. No name or signature is collected:
+        the version of this form and the time of your consent are saved with your data under your random participant
+        code.</p>
+      <ul class="statements">
+        <li>I have read and understood the participant information sheet, and I know how to contact Ryan Longhurst with
+          questions.</li>
+        <li>I am 18 or over.</li>
+        <li>I understand that taking part is voluntary, that there is no payment or prize, and that I can stop at any
+          time without giving a reason by closing the page.</li>
+        <li>I understand that data from puzzles I finish is kept unless I ask for it to be removed, and that I can only
+          ask for this by emailing my participant code to Ryan Longhurst before 28 February 2027.</li>
+        <li>I understand what is recorded, that it is linked to a random code rather than my name, and that it is
+          stored by the services described in the information sheet, some of them outside the UK.</li>
+        <li>I understand that my leaderboard tag or random name and my scores will be shown to other participants.</li>
+        <li>I understand that anonymised results will be used in an undergraduate dissertation.</li>
+        <li>I agree to take part in this study.</li>
+      </ul>
+      <p>If you do not want to take part, close the page: nothing is sent.</p>
+
+      <p style="margin-top: 28px"><button class="btn primary doc-close">Back</button></p>
+    </div>
   </div>
 </section>
 
@@ -413,6 +588,7 @@
 <section id="tag" hidden>
   <div class="page">
     <h1>Your leaderboard tag</h1>
+    <p class="lead">Other players will see this tag next to your scores. Please don't use your initials or any part of your name.</p>
     <div class="tag-slots" id="tagSlots"></div>
     <p id="tagMsg" class="tag-msg" aria-live="polite"></p>
     <div class="stack">
@@ -514,7 +690,7 @@
     <h1>Three quick questions</h1>
     <p class="lead">Nearly done. Please answer honestly: your answers do not affect your score.</p>
     <div id="surveyQs"></div>
-    <label class="field-label" for="surveyComment">Any comments on the study? (optional)</label>
+    <label class="field-label" for="surveyComment">Any comments on the study? (optional; please don't include your name or other personal details)</label>
     <textarea id="surveyComment" class="field" rows="3" maxlength="2000" style="max-width: 100%"></textarea>
     <p id="surveyHint" class="form-hint" aria-live="polite"></p>
     <div class="stack"><button id="surveyBtn" class="btn primary">Finish</button></div>
