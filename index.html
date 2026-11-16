@@ -72,7 +72,7 @@
   .check { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 10px; cursor: pointer; }
   .check input { width: 18px; height: 18px; margin-top: 3px; flex: none; }
   /* consent: the two documents open over the page */
-  .docs { margin: 22px 0 26px; }
+  .docs { margin: 20px 0 26px; }
   .doc-top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 10px; }
   .doc-top .doc-kind { margin: 0; color: var(--muted); font-size: 14px; letter-spacing: .04em; text-transform: uppercase; }
   .page.doc h1 { font-size: 1.5rem; line-height: 1.25; margin-bottom: 14px; }
@@ -210,7 +210,7 @@
   .mini span.on.c0 { background: var(--blue); }
   .mini span.on.c1 { background: var(--yellow); }
   .mini span.off { box-shadow: inset 0 0 0 1px var(--used); }
-  .controls { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .controls { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
   .controls button { background: #fff; border: 2px solid var(--grid); border-radius: 8px; padding: 5px 14px; cursor: pointer; }
   .hint { color: var(--muted); font-size: 15px; margin: 0 0 20px; }
   .their { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 22px; }
@@ -264,11 +264,6 @@
 <section id="consent" hidden>
   <div class="page consent">
     <h1>Before you start</h1>
-    <p class="lead">A research study for an undergraduate economics dissertation at the University of Edinburgh.</p>
-    <p>You play nine short Blokus puzzles against a computer, and before each move you can spend points on hints.
-      Taking part is voluntary and open to anyone aged 18 or over. There is no payment or prize.</p>
-    <p>Please read both documents before deciding whether to take part.</p>
-
     <div class="stack docs">
       <button id="infoSheetBtn" class="btn" aria-haspopup="dialog">Participant information sheet</button>
       <button id="consentFormBtn" class="btn" aria-haspopup="dialog">Consent form</button>
@@ -280,7 +275,6 @@
 
     <p id="consentHint" class="form-hint" aria-live="polite"></p>
     <button id="consentBtn" class="btn primary" disabled>Continue</button>
-    <p class="menu-later">If you do not want to take part, close this page: nothing is sent.</p>
   </div>
 
   <!-- ---- participant information sheet -->
@@ -489,7 +483,6 @@
     <p id="inAppNote" class="menu-later" hidden>You're using the browser inside another app, which may forget your progress
       if you close it. If you might take a break, open this page in Safari or Chrome instead (look for
       "Open in browser" in the app's menu).</p>
-    <p id="dataNote" class="menu-later" hidden>The puzzles download about 160 MB in total, so Wi-Fi is best.</p>
   </div>
 </section>
 
@@ -588,7 +581,6 @@
 <section id="tag" hidden>
   <div class="page">
     <h1>Your leaderboard tag</h1>
-    <p class="lead">Other players will see this tag next to your scores. Please don't use your initials or any part of your name.</p>
     <div class="tag-slots" id="tagSlots"></div>
     <p id="tagMsg" class="tag-msg" aria-live="polite"></p>
     <div class="stack">
@@ -644,8 +636,6 @@
           <button id="flipBtn">Flip<span class="mouse-only"> (F)</span></button>
           <button id="playRulesBtn">Rules</button>
         </div>
-        <p class="hint mouse-only">Pick a piece, then click the board to place it. Scrolling over the board also rotates. Esc puts the piece back.</p>
-        <p class="hint touch-only">Pick a piece, then tap or drag on the board to move its shadow. Tap the shadow again to place it.</p>
         <h2>Computer's pieces</h2>
         <div id="their" class="their"></div>
       </div>

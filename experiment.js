@@ -113,11 +113,14 @@ function randomCode() {
 }
 
 // Balanced stakes: the list of stakes repeated to cover every puzzle, then shuffled, so a
-// participant gets 4 or 5 of each (and which puzzles are double is random).
+// participant gets 4 or 5 of each (and which puzzles are double is random). The first puzzle
+// played is always at the lowest stakes, so nobody meets doubled stakes before they have
+// played one real puzzle: the list is shuffled again until it starts that way.
 function assignStakes(order) {
   if (FIXED_STAKES !== null) return Object.fromEntries(order.map(o => [o, FIXED_STAKES]));
-  const pool = shuffled(STAKES);
-  const list = shuffled(order.map((_, i) => pool[i % pool.length]));
+  const pool = shuffled(STAKES), lowest = Math.min(...STAKES);
+  let list;
+  do { list = shuffled(order.map((_, i) => pool[i % pool.length])); } while (list[0] !== lowest);
   return Object.fromEntries(order.map((o, i) => [o, list[i]]));
 }
 
@@ -337,11 +340,9 @@ function showMenu() {
   $("menuStakes").textContent = extra;
   $("menuStakes").hidden = !extra;
   $("startBtn").textContent = start;
-  $("menuLater").textContent = (session.quizPassed && BOARD_URL ? `You appear on the leaderboard as ${session.boardName}. ` : "")
-    + "You don't have to do everything in one sitting. Your progress is saved in this browser, "
+  $("menuLater").textContent = "You don't have to do everything in one sitting. Your progress is saved in this browser, "
     + "so you can stop and come back later on this device to carry on.";
   $("progress").hidden = !session.quizPassed;
-  $("dataNote").hidden = session.round > 0 || !!a;          // before the first puzzle only
   $("inAppNote").hidden = !IN_APP;
   progressBoxes($("progress"), true);
   show("menu");

@@ -14,7 +14,7 @@ computer opponent and can pay for hints before each move.
 
 - All 9 puzzles required, in a random order for each participant. Setting `REQUIRED_PUZZLES` lower adds a thank-you screen part-way with the option to carry on.
 - One game per puzzle. Before each move a hint price p is drawn from 0.25, 0.5, 1, 2 points: "which piece" costs p, "where" costs p, "show the move" costs 2p. On 30% of moves there are no hints.
-- Stakes: each puzzle counts x1 or x2 (balanced within each person, random which). Hint prices are not multiplied.
+- Stakes: each puzzle counts x1 or x2 (balanced within each person, random which, except that the first puzzle played is always x1). Hint prices are not multiplied.
 - Score per puzzle = 20 - stakes x (points short of a win by 1) - hint costs, at least 0 (`START_POINTS`). No payment: after each puzzle a leaderboard shows the participant's rank on that puzzle and the two places above and below (anonymous random names), and an overall ranking at the end. The leaderboard is a Google Sheet with the script in `leaderboard/` (setup in `leaderboard/SETUP.md`); paste its web app address into `LEADERBOARD_URL`.
 - Mid-game starts are built in but off (`START_DEPTH_SHARE`).
 
