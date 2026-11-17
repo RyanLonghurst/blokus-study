@@ -773,6 +773,31 @@ function afterMove() {
   if (s.current !== game.human) return computerTurn();
   if (game.kind === "round") prepareDecision();
   render();
+  if (game.skip) setTimeout(devSkipMove, 0);
+}
+
+// Testing only (the Skip puzzle button): the rest of the game on screen is played at once,
+// the hinted move for the participant and the usual reply for the computer, so the result,
+// leaderboard and later screens can be looked at without playing every puzzle.
+function devSkipPuzzle() {
+  if (!DEV || !game || $("play").hidden || game.state.gameOver || game.skip) return;
+  record("dev_skip_puzzle", { kind: game.kind });
+  game.skip = true;
+  devSkipMove();      // if the computer is thinking, its move carries the skip on
+}
+
+function devSkipMove() {
+  if (!game || !game.skip || game.busy || game.state.gameOver || game.state.current !== game.human) return;
+  const legal = game.state.legalActions();
+  const action = game.info && game.info.move != null ? game.info.move : legal[Math.floor(Math.random() * legal.length)];
+  const act = SMALL.actions[action];
+  if (game.kind === "practice") {
+    record("move", { by: "participant", player: game.state.current, action, piece: act.piece, orientation: act.orientation, input: "dev_skip" });
+    game.state.play(action);
+    selected = null;
+    return afterMove();
+  }
+  participantMove(action, act.piece, act.orientation);
 }
 
 // Works out every legal move's exact value and draws the hint price once per decision
@@ -837,18 +862,19 @@ function computerTurn() {
     const player = state.current;
     state.play(reply);
     game.lastComputer = reply;
+    sound("computer");
     if (game.kind === "round") session.active.moves.push(reply);
     record("move", { by: "computer", ...(game.kind === "round" ? { round: session.active.index + 1, opening: game.opening } : {}), player, action: reply });
     game.busy = false;
     if (!state.gameOver && state.current !== game.human) {   // participant is out: computer moves again
       game.busy = true;
       render();
-      setTimeout(step, COMPUTER_DELAY_MS);
+      setTimeout(step, game.skip ? 0 : COMPUTER_DELAY_MS);
       return;
     }
     afterMove();
   };
-  setTimeout(step, COMPUTER_DELAY_MS);
+  setTimeout(step, game.skip ? 0 : COMPUTER_DELAY_MS);
 }
 
 function participantMove(action, piece, orientation) {
@@ -1129,18 +1155,70 @@ function placementAt(r, c) {
   return { row, col, action, cells, legal };
 }
 
+// ---------------------------------------------------------------- sounds
+// Short synthesised sounds for picking up, turning and placing pieces: no audio files. The
+// Mute button's setting is kept in this browser under its own key, apart from the session,
+// so it is not part of the recorded data.
+const SOUND_KEY = "blokus-sound-off";
+const SOUNDS = {                // each part: [wave, start Hz, end Hz, seconds, volume]
+  select: [["triangle", 620, 880, 0.07, 0.16]],
+  deselect: [["triangle", 560, 400, 0.07, 0.13]],
+  turn: [["triangle", 430, 560, 0.05, 0.13]],
+  place: [["sine", 200, 85, 0.13, 0.45], ["triangle", 950, 320, 0.03, 0.12]],
+  computer: [["sine", 150, 70, 0.13, 0.4], ["triangle", 760, 260, 0.03, 0.1]],
+  rejected: [["sine", 150, 115, 0.11, 0.22]],
+};
+let audio = null, soundOff = false;
+try { soundOff = localStorage.getItem(SOUND_KEY) === "1"; } catch (e) { /* storage blocked: sound stays on */ }
+
+function sound(name) {
+  if (soundOff) return;
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    if (!audio) audio = new Ctx();
+    if (audio.state === "suspended") audio.resume();
+    const t = audio.currentTime;
+    for (const [wave, from, to, seconds, volume] of SOUNDS[name]) {
+      const osc = audio.createOscillator(), gain = audio.createGain();
+      osc.type = wave;
+      osc.frequency.setValueAtTime(from, t);
+      osc.frequency.exponentialRampToValueAtTime(to, t + seconds);
+      gain.gain.setValueAtTime(volume, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + seconds);
+      osc.connect(gain).connect(audio.destination);
+      osc.start(t);
+      osc.stop(t + seconds + 0.02);
+    }
+  } catch (e) { /* no sound in this browser: the game carries on */ }
+}
+
+function showSoundButton() {
+  $("soundBtn").textContent = soundOff ? "Unmute" : "Mute";
+  $("soundBtn").setAttribute("aria-pressed", String(soundOff));
+}
+
+function toggleSound() {
+  soundOff = !soundOff;
+  try { localStorage.setItem(SOUND_KEY, soundOff ? "1" : "0"); } catch (e) { /* not saved */ }
+  showSoundButton();
+  sound("select");
+}
+
 function selectPiece(piece) {
   if (!game || game.over || !game.state.remaining[game.human].has(piece)) return;
   if (selected && selected.piece === piece) return deselect();
   selected = { piece, shape: ORIENTATIONS[piece][0].map(c => [...c]) };
   if (inputKind !== "mouse") hover = null;
   record("select", { piece, input: inputKind });
+  sound("select");
   render();
 }
 
 function deselect() {
   if (!selected) return;
   record("deselect", { piece: selected.piece });
+  sound("deselect");
   selected = null;
   render();
 }
@@ -1151,6 +1229,7 @@ function turn(kind) {
   else if (kind === "rotate_back") selected.shape = rotate(rotate(rotate(selected.shape)));
   else selected.shape = mirror(selected.shape);
   record(kind, { piece: selected.piece, orientation: orientationIndex(selected.piece, selected.shape) });
+  sound("turn");
   render();
 }
 
@@ -1161,8 +1240,10 @@ function clickCell(r, c) {
   if (!p.legal) {
     record("place_rejected", { piece: selected.piece, orientation, row: p.row, col: p.col, action: p.action, input: inputKind });
     showMessage(p.action === null ? "That doesn't fit on the board." : "That piece can't go there.");
+    sound("rejected");
     return;
   }
+  sound("place");
   if (game.kind === "practice") {
     record("move", { by: "participant", player: game.state.current, action: p.action, piece: selected.piece, orientation, input: inputKind });
     game.state.play(p.action);
@@ -1464,6 +1545,8 @@ function wireInput() {
   }
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeDocs(); });
   $("consentBtn").addEventListener("click", submitConsent);
+  $("soundBtn").addEventListener("click", toggleSound);
+  showSoundButton();
   for (const a of document.querySelectorAll(".researcher-email")) {
     a.textContent = RESEARCHER_EMAIL;
     a.href = `mailto:${RESEARCHER_EMAIL}?subject=Blokus study`;
@@ -1530,6 +1613,7 @@ function main() {
     });
     $("devDownload").addEventListener("click", download);
     $("devSkipVideo").addEventListener("click", () => { videoDone("dev_skip"); showMenu(); });
+    $("devSkipPuzzle").addEventListener("click", devSkipPuzzle);
   }
   // read-only view for automated tests
   if (DEV) window.blokusTest = { get game() { return game; }, get selected() { return selected; }, get session() { return session; }, anchorOf, orientationIndex };

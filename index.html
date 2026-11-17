@@ -211,7 +211,7 @@
   .mini span.on.c1 { background: var(--yellow); }
   .mini span.off { box-shadow: inset 0 0 0 1px var(--used); }
   .controls { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; }
-  .controls button { background: #fff; border: 2px solid var(--grid); border-radius: 8px; padding: 5px 14px; cursor: pointer; }
+  .controls button { background: #fff; border: 2px solid var(--grid); border-radius: 8px; padding: 5px 10px; cursor: pointer; }
   .hint { color: var(--muted); font-size: 15px; margin: 0 0 20px; }
   .their { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 22px; }
   .their .mini span { width: 9px; height: 9px; }
@@ -255,6 +255,7 @@
   <button id="devReset">Reset session</button>
   <button id="devDownload">Download data</button>
   <button id="devSkipVideo">Skip video</button>
+  <button id="devSkipPuzzle">Skip puzzle</button>
 </div>
 
 <!-- ---------------------------------------------------------------- consent -->
@@ -302,8 +303,7 @@
         solved, the exact value of every hint is known.</p>
 
       <h2>Why have I been invited to take part?</h2>
-      <p>The study is open to anyone aged 18 or over. You have received the link from me or from someone who knows me.
-        You do not need to have played Blokus before.</p>
+      <p>The study is open to anyone aged 18 or over. You do not need to have played Blokus before.</p>
 
       <h2>Do I have to take part?</h2>
       <p>No. Taking part is entirely voluntary. You can stop at any time, without giving a reason, by closing the page.
@@ -375,18 +375,14 @@
         cookies, analytics or advertising.</p>
       <p><strong>Where your data goes.</strong></p>
       <table class="doc-table">
-        <thead><tr><th>Service</th><th>What it does</th><th>What it receives</th></tr></thead>
+        <thead><tr><th>Service</th><th>What it does</th></tr></thead>
         <tbody>
-          <tr><td>GitHub Pages (GitHub, United States)</td><td>Hosts the study page</td>
-            <td>Your IP address and browser details when the page loads</td></tr>
-          <tr><td>DataPipe (jsPsych project)</td><td>Passes your data files on to storage</td>
-            <td>Your data files and IP address</td></tr>
+          <tr><td>GitHub Pages (GitHub, United States)</td><td>Hosts the study page</td></tr>
+          <tr><td>DataPipe (jsPsych project)</td><td>Passes your data files on to storage</td></tr>
           <tr><td>Zenodo (run by CERN, Switzerland)</td>
-            <td>Stores your data files in a private, unpublished record that only I can open</td>
-            <td>Your data files</td></tr>
+            <td>Stores your data files in a private, unpublished record that only I can open</td></tr>
           <tr><td>Google Sheets (Google, United States)</td>
-            <td>Runs the leaderboard, in a private sheet that only I can open</td>
-            <td>Your participant code, leaderboard name, puzzle, score and the time; your IP address</td></tr>
+            <td>Runs the leaderboard, in a private sheet that only I can open</td></tr>
         </tbody>
       </table>
       <p>If sending your data fails, the page asks you to download your data file and email it to me. If you do, your
@@ -412,14 +408,6 @@
 
       <h2>Who can I contact?</h2>
       <p>If you have any questions about the study, please contact me at <a class="researcher-email"></a>.</p>
-      <p>If you wish to make a complaint about the study, please contact my supervisor, Dr Dimitri Migrow, at
-        <a href="mailto:dimitri.migrow@ed.ac.uk">dimitri.migrow@ed.ac.uk</a>. Please quote the study title and the date
-        you took part. You can also contact the University's Data Protection Officer at
-        <a href="mailto:dpo@ed.ac.uk">dpo@ed.ac.uk</a>. If you are not satisfied with how your data is handled, you can
-        complain to the Information Commissioner's Office
-        (<a href="https://ico.org.uk" target="_blank" rel="noopener">ico.org.uk</a>).</p>
-      <p>If the study changes in a way that affects you, the change will be shown on the study page.</p>
-      <p>You can get this information in large print or other formats on request from me.</p>
 
       <p style="margin-top: 28px"><button class="btn primary doc-close">Back</button></p>
     </div>
@@ -635,6 +623,7 @@
           <button id="rotateBtn">Rotate<span class="mouse-only"> (R)</span></button>
           <button id="flipBtn">Flip<span class="mouse-only"> (F)</span></button>
           <button id="playRulesBtn">Rules</button>
+          <button id="soundBtn" aria-pressed="false">Mute</button>
         </div>
         <h2>Computer's pieces</h2>
         <div id="their" class="their"></div>
